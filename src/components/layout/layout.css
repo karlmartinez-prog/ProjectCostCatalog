@@ -1,0 +1,335 @@
+/* ── App Shell ─────────────────────────────────────── */
+.app-shell {
+    display: flex;
+    height: 100vh;
+    width: 100vw;
+    overflow: hidden;
+    background: #f4f3ef;
+    font-family: 'DM Sans', sans-serif;
+}
+
+/* ── Sidebar ────────────────────────────────────────── */
+.sidebar {
+    width: 224px;
+    min-width: 224px;
+    height: 100vh;
+    background: #1a1917;
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    position: relative;
+    z-index: 10;
+}
+
+.sidebar-logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 24px 20px 20px;
+    color: #f0ede6;
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: -0.3px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    margin-bottom: 12px;
+}
+
+.sidebar-logo svg {
+    color: #c9a84c;
+}
+
+.sidebar-nav {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 4px 12px;
+    gap: 2px;
+}
+
+.sidebar-link {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 12px;
+    border-radius: 8px;
+    color: #8a8780;
+    font-size: 13.5px;
+    font-weight: 450;
+    text-decoration: none;
+    transition: background 0.15s, color 0.15s;
+    letter-spacing: -0.1px;
+}
+
+.sidebar-link:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: #d4d0c8;
+}
+
+.sidebar-link.active {
+    background: rgba(201, 168, 76, 0.12);
+    color: #c9a84c;
+}
+
+.sidebar-link.active svg {
+    color: #c9a84c;
+}
+
+.sidebar-logout {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 12px;
+    padding: 9px 12px;
+    border-radius: 8px;
+    color: #6b6866;
+    font-size: 13px;
+    font-family: inherit;
+    background: none;
+    border: none;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+    width: calc(100% - 24px);
+}
+
+.sidebar-logout:hover {
+    background: rgba(255, 80, 80, 0.08);
+    color: #f08080;
+}
+
+/* ── Main area ─────────────────────────────────────── */
+.main-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* ── Navbar ─────────────────────────────────────────── */
+.navbar {
+    height: 60px;
+    min-height: 60px;
+    background: #f4f3ef;
+    border-bottom: 1px solid #e5e2d9;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 28px;
+    gap: 16px;
+}
+
+.navbar-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: #1a1917;
+    letter-spacing: -0.3px;
+    margin: 0;
+}
+
+.navbar-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.navbar-search {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #eceae3;
+    border: 1px solid #dedad0;
+    border-radius: 8px;
+    padding: 7px 12px;
+    color: #999590;
+}
+
+.navbar-search input {
+    border: none;
+    background: none;
+    outline: none;
+    font-size: 13px;
+    color: #1a1917;
+    font-family: inherit;
+    width: 180px;
+}
+
+.navbar-search input::placeholder {
+    color: #aaa89f;
+}
+
+.navbar-icon-btn {
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    border: 1px solid #dedad0;
+    background: #eceae3;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #7a7872;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.navbar-icon-btn:hover {
+    background: #e0ddd5;
+}
+
+.navbar-avatar {
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    background: #1a1917;
+    color: #c9a84c;
+    font-size: 12px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    letter-spacing: 0.5px;
+}
+
+/* ── Page Content ───────────────────────────────────── */
+.page-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 28px;
+}
+
+/* ── Loading screen ────────────────────────────────── */
+.loading-screen {
+    height: 100vh;
+    width: 100vw;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #f4f3ef;
+}
+
+.loading-spinner {
+    width: 28px;
+    height: 28px;
+    border: 2px solid #e0ddd5;
+    border-top-color: #c9a84c;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* ── Page header (used in every page) ──────────────── */
+.page-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 24px;
+}
+
+.page-header-text h2 {
+    font-size: 22px;
+    font-weight: 650;
+    color: #1a1917;
+    letter-spacing: -0.5px;
+    margin: 0 0 4px;
+}
+
+.page-header-text p {
+    font-size: 13.5px;
+    color: #9a9790;
+    margin: 0;
+}
+
+/* ── Stat cards (Dashboard) ──────────────────────────── */
+.stat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 14px;
+    margin-bottom: 28px;
+}
+
+.stat-card {
+    background: #fff;
+    border: 1px solid #e5e2d9;
+    border-radius: 12px;
+    padding: 18px 20px;
+}
+
+.stat-card-label {
+    font-size: 12px;
+    color: #9a9790;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+}
+
+.stat-card-value {
+    font-size: 26px;
+    font-weight: 700;
+    color: #1a1917;
+    letter-spacing: -0.8px;
+}
+
+.stat-card-sub {
+    font-size: 12px;
+    color: #b0ada5;
+    margin-top: 4px;
+}
+
+/* ── Generic card ──────────────────────────────────── */
+.card {
+    background: #fff;
+    border: 1px solid #e5e2d9;
+    border-radius: 12px;
+    padding: 20px;
+}
+
+/* ── Badge ─────────────────────────────────────────── */
+.badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 9px;
+    border-radius: 99px;
+    font-size: 11.5px;
+    font-weight: 500;
+    letter-spacing: 0.1px;
+}
+
+.badge-green {
+    background: #e6f4ea;
+    color: #2d7a3a;
+}
+
+.badge-red {
+    background: #fdecea;
+    color: #b93030;
+}
+
+.badge-yellow {
+    background: #fef6e0;
+    color: #9a6f00;
+}
+
+.badge-blue {
+    background: #e8f0fe;
+    color: #1a56c4;
+}
+
+.badge-purple {
+    background: #f2eeff;
+    color: #6b3fa0;
+}
+
+.badge-gray {
+    background: #f0ede8;
+    color: #6b6864;
+}
+
+.badge-gold {
+    background: #fdf4dc;
+    color: #8a6800;
+}
