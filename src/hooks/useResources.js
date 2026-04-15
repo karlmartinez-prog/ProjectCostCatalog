@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabaseClient'
 
 export function useResources(filters = {}) {
@@ -6,26 +6,78 @@ export function useResources(filters = {}) {
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState(null)
 
-    useEffect(() => {
-        async function fetch() {
-            setLoading(true)
-            let query = supabase
-                .from('resources')
-                .select(`*, categories(*), suppliers(*)`)
-                .order('created_at', { ascending: false })
+    const fetchResources = useCallback(async () => {
+        setLoading(true)
+        setError(null)
 
-            if (filters.category_id) query = query.eq('category_id', filters.category_id)
-            if (filters.supplier_id) query = query.eq('supplier_id', filters.supplier_id)
-            if (filters.status) query = query.eq('status', filters.status)
-            if (filters.search) query = query.ilike('name', `%${filters.search}%`)
+        let query = supabase
+            .from('resources')
+            .select(`
+        *,
+        categories ( id, name, type ),
+        suppliers ( id, name )
+      `)
+            .order('created_at', { ascending: false })
 
-            const { data, error } = await query
-            if (error) setError(error.message)
-            else setResources(data)
-            setLoading(false)
-        }
-        fetch()
+        if (filters.category_id) query = query.eq('category_id', filters.category_id)
+        if (filters.supplier_id) query = query.eq('supplier_id', filters.supplier_id)
+        if (filters.status) query = query.eq('status', filters.status)
+        if (filters.search) query = query.ilike('name', `%${filters.search}%`)
+
+        const { data, error } = await query
+        if (error) setError(error.message)
+        else setResources(data || [])
+        setLoading(false)
     }, [filters.category_id, filters.supplier_id, filters.status, filters.search])
 
-    return { resources, loading, error }
+    useEffect(() => { fetchResources() }, [fetchResources])
+
+    async function createResource(payload) {
+        const { data, error } = await supabase
+            .from('resources')
+            .insert([payload])
+            .select(`*, categories(id,name,type), suppliers(id,name)`)
+            .single()
+        if (error) throw error
+        setResources(prev => [data, ...prev])
+        return data
+    }
+
+    async function updateResource(id, payload) {
+        const { data, error } = await supabase
+            .from('resources')
+            .update(payload)
+            .eq('id', id)
+            .select(`*, categories(id,name,type), suppliers(id,name)`)
+            .single()
+        if (error) throw error
+        setResources(prev => prev.map(r => r.id === id ? data : r))
+        return data
+    }
+
+    async function deleteResource(id) {
+        const { error } = await supabase.from('resources').delete().eq('id', id)
+        if (error) throw error
+        setResources(prev => prev.filter(r => r.id !== id))
+    }
+
+    return { resources, loading, error, refetch: fetchResources, createResource, updateResource, deleteResource }
+}
+
+export function useCategories() {
+    const [categories, setCategories] = useState([])
+    useEffect(() => {
+        supabase.from('categories').select('*').order('name')
+            .then(({ data }) => setCategories(data || []))
+    }, [])
+    return categories
+}
+
+export function useSuppliers() {
+    const [suppliers, setSuppliers] = useState([])
+    useEffect(() => {
+        supabase.from('suppliers').select('id, name').order('name')
+            .then(({ data }) => setSuppliers(data || []))
+    }, [])
+    return suppliers
 }
