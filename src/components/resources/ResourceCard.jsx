@@ -29,7 +29,7 @@ export function timeAgo(date) {
 }
 
 export default function ResourceCard({ resource, onEdit, onDelete }) {
-    const { name, image_url, unit_cost, currency, unit, status, quantity, categories, suppliers, created_at } = resource
+    const { name, image_url, unit_cost, currency, unit, status, quantity, categories, suppliers, created_at, procured_at } = resource
 
     return (
         <div className="resource-card">
@@ -72,7 +72,12 @@ export default function ResourceCard({ resource, onEdit, onDelete }) {
                 <div className="rc-footer">
                     <span className="rc-supplier">{suppliers?.name ?? 'No supplier'}</span>
                     <span className="rc-detail">Qty: {quantity ?? 0}</span>
-                    <span className="rc-detail">{timeAgo(created_at)}</span>
+                    {procured_at
+                        ? <span className="rc-detail rc-procured" title="Date procured">
+                            🗓 {new Date(procured_at).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}
+                        </span>
+                        : <span className="rc-detail">{timeAgo(created_at)}</span>
+                    }
                 </div>
             </div>
         </div>

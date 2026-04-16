@@ -73,7 +73,8 @@ export function useCategories() {
     return categories
 }
 
-export function useSuppliers() {
+// Lightweight supplier list for dropdowns (used in ResourceModal)
+export function useSupplierList() {
     const [suppliers, setSuppliers] = useState([])
     useEffect(() => {
         supabase.from('suppliers').select('id, name').order('name')

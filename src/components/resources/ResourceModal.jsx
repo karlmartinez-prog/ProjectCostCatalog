@@ -6,7 +6,7 @@ const STATUSES = ['active', 'pending', 'discontinued']
 const EMPTY = {
     name: '', unit_cost: '', currency: 'PHP', unit: '',
     status: 'active', quantity: '', image_url: '',
-    category_id: '', supplier_id: ''
+    category_id: '', supplier_id: '', procured_at: ''
 }
 
 export default function ResourceModal({ open, onClose, onSave, resource, categories, suppliers }) {
@@ -27,6 +27,7 @@ export default function ResourceModal({ open, onClose, onSave, resource, categor
                 image_url: resource.image_url || '',
                 category_id: resource.category_id || '',
                 supplier_id: resource.supplier_id || '',
+                procured_at: resource.procured_at || '',
             })
         } else {
             setForm(EMPTY)
@@ -69,6 +70,7 @@ export default function ResourceModal({ open, onClose, onSave, resource, categor
                 quantity: parseInt(form.quantity) || 0,
                 category_id: form.category_id || null,
                 supplier_id: form.supplier_id || null,
+                procured_at: form.procured_at || null,
             }
             await onSave(payload)
             onClose()
@@ -149,6 +151,14 @@ export default function ResourceModal({ open, onClose, onSave, resource, categor
                                 onChange={e => set('quantity', e.target.value)} placeholder="0" />
                         </div>
                         <div className="mf-group">
+                            <label>Date procured</label>
+                            <input type="date" value={form.procured_at}
+                                onChange={e => set('procured_at', e.target.value)} />
+                        </div>
+                    </div>
+
+                    <div className="modal-grid-2">
+                        <div className="mf-group">
                             <label>Category</label>
                             <select value={form.category_id} onChange={e => set('category_id', e.target.value)}>
                                 <option value="">— None —</option>
@@ -157,16 +167,15 @@ export default function ResourceModal({ open, onClose, onSave, resource, categor
                                 ))}
                             </select>
                         </div>
-                    </div>
-
-                    <div className="mf-group">
-                        <label>Supplier</label>
-                        <select value={form.supplier_id} onChange={e => set('supplier_id', e.target.value)}>
-                            <option value="">— None —</option>
-                            {suppliers.map(s => (
-                                <option key={s.id} value={s.id}>{s.name}</option>
-                            ))}
-                        </select>
+                        <div className="mf-group">
+                            <label>Supplier</label>
+                            <select value={form.supplier_id} onChange={e => set('supplier_id', e.target.value)}>
+                                <option value="">— None —</option>
+                                {suppliers.map(s => (
+                                    <option key={s.id} value={s.id}>{s.name}</option>
+                                ))}
+                            </select>
+                        </div>
                     </div>
 
                     {error && <div className="modal-error">{error}</div>}

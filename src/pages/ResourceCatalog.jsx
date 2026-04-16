@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { Plus, Search, SlidersHorizontal, LayoutGrid, List, AlertTriangle, Pencil, Trash2, X } from 'lucide-react'
-import { useResources, useCategories, useSuppliers } from '../hooks/useResources'
+import { useResources, useCategories, useSupplierList } from '../hooks/useResources'
 import ResourceCard from '../components/resources/ResourceCard'
 import ResourceModal from '../components/resources/ResourceModal'
 import '../components/resources/resources.css'
@@ -29,7 +29,7 @@ export default function ResourceCatalog() {
 
     const { resources, loading, error, createResource, updateResource, deleteResource } = useResources(filters)
     const categories = useCategories()
-    const suppliers = useSuppliers()
+    const suppliers = useSupplierList()
 
     function showToast(msg, type = 'success') {
         setToast({ msg, type })
@@ -211,6 +211,7 @@ export default function ResourceCatalog() {
                                 <th>Unit cost</th>
                                 <th>Qty</th>
                                 <th>Status</th>
+                                <th>Procured</th>
                                 <th>Added</th>
                                 <th></th>
                             </tr>
@@ -243,6 +244,11 @@ export default function ResourceCatalog() {
                                         <span className={`badge ${r.status === 'active' ? 'badge-green' : r.status === 'pending' ? 'badge-yellow' : 'badge-red'}`}>
                                             {r.status}
                                         </span>
+                                    </td>
+                                    <td className="rc-muted" style={{ fontSize: 12 }}>
+                                        {r.procured_at
+                                            ? new Date(r.procured_at).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
+                                            : '—'}
                                     </td>
                                     <td className="rc-muted" style={{ fontSize: 12 }}>
                                         {new Date(r.created_at).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}
