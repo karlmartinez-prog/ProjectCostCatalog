@@ -5,6 +5,7 @@ import { supabase } from './lib/supabaseClient'
 import PageWrapper from './components/layout/PageWrapper'
 import Home from './pages/Home'
 import ProjectCatalog from './pages/ProjectCatalog'
+import ProjectDetail from './pages/ProjectDetail'
 import ResourceCatalog from './pages/ResourceCatalog'
 import Suppliers from './pages/Suppliers'
 import Insights from './pages/Insights'
@@ -47,6 +48,7 @@ export default function App() {
         }>
           <Route index element={<Home />} />
           <Route path="projects" element={<ProjectCatalog />} />
+          <Route path="projects/:id" element={<ProjectDetail />} />
           <Route path="resources" element={<ResourceCatalog />} />
           <Route path="suppliers" element={<Suppliers />} />
           <Route path="insights" element={<Insights />} />
