@@ -30,8 +30,9 @@ export function useSuppliers(search = '') {
             .from('suppliers')
             .insert([payload])
             .select('*')
-            .single()
+            .maybeSingle()
         if (error) throw error
+        if (!data) throw new Error('Insert failed — check your permissions (RLS policy may be blocking this).')
         setSuppliers(prev => [...prev, data].sort((a, b) => a.name.localeCompare(b.name)))
         return data
     }
@@ -42,8 +43,9 @@ export function useSuppliers(search = '') {
             .update(payload)
             .eq('id', id)
             .select('*')
-            .single()
+            .maybeSingle()
         if (error) throw error
+        if (!data) throw new Error('Update failed — check your permissions (RLS policy may be blocking this).')
         setSuppliers(prev => prev.map(s => s.id === id ? data : s))
         return data
     }

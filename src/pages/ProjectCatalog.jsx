@@ -44,7 +44,7 @@ export default function ProjectCatalog() {
     const [filterStatus, setFilterStatus] = useState('')
     const [showFilters, setShowFilters] = useState(false)
     const [inflationOn, setInflationOn] = useState(false)
-    const [inflationYear, setInflationYear] = useState(new Date().getFullYear() + 3)
+    const [inflationYear, setInflationYear] = useState(new Date().getFullYear())
     const [modalOpen, setModalOpen] = useState(false)
     const [editing, setEditing] = useState(null)
     const [editLineItems, setEditLineItems] = useState([])
@@ -165,7 +165,7 @@ export default function ProjectCatalog() {
                             <span>to</span>
                             <input
                                 type="number"
-                                min={currentYear + 1}
+                                min={currentYear}
                                 max={currentYear + 30}
                                 value={inflationYear}
                                 onChange={e => setInflationYear(parseInt(e.target.value))}

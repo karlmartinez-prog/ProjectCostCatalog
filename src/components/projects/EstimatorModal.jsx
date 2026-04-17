@@ -139,7 +139,7 @@ export default function EstimatorModal({ open, onClose }) {
                             <label>Target year</label>
                             <input
                                 type="number"
-                                min={currentYear + 1}
+                                min={currentYear}
                                 max={currentYear + 50}
                                 value={targetYear}
                                 onChange={e => setTargetYear(parseInt(e.target.value))}

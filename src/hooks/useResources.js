@@ -37,8 +37,9 @@ export function useResources(filters = {}) {
             .from('resources')
             .insert([payload])
             .select(`*, categories(id,name,type), suppliers(id,name)`)
-            .single()
+            .maybeSingle()
         if (error) throw error
+        if (!data) throw new Error('Insert failed — check your permissions (RLS policy may be blocking this).')
         setResources(prev => [data, ...prev])
         return data
     }
@@ -49,8 +50,9 @@ export function useResources(filters = {}) {
             .update(payload)
             .eq('id', id)
             .select(`*, categories(id,name,type), suppliers(id,name)`)
-            .single()
+            .maybeSingle()
         if (error) throw error
+        if (!data) throw new Error('Update failed — check your permissions (RLS policy may be blocking this).')
         setResources(prev => prev.map(r => r.id === id ? data : r))
         return data
     }
