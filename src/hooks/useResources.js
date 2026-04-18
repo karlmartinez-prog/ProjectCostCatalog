@@ -84,3 +84,13 @@ export function useSupplierList() {
     }, [])
     return suppliers
 }
+
+// Fetch inflation rates for display in catalog pages (read-only)
+export function useInflationRatesReadonly() {
+    const [rates, setRates] = useState([])
+    useEffect(() => {
+        supabase.from('inflation_rates').select('*')
+            .then(({ data }) => setRates(data || []))
+    }, [])
+    return rates
+}

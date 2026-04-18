@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
-import { Plus, Search, SlidersHorizontal, LayoutGrid, List, AlertTriangle, Pencil, Trash2, X, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react'
-import { useResources, useCategories, useSupplierList } from '../hooks/useResources'
+import { Plus, Search, SlidersHorizontal, LayoutGrid, List, AlertTriangle, Pencil, Trash2, X, ChevronUp, ChevronDown, ChevronsUpDown, TrendingUp } from 'lucide-react'
+import { useResources, useCategories, useSupplierList, useInflationRatesReadonly } from '../hooks/useResources'
+import { adjustedResourceCost } from '../services/inflationEngine'
 import ResourceCard from '../components/resources/ResourceCard'
 import ResourceModal from '../components/resources/ResourceModal'
 import ResourceDrawer from '../components/resources/ResourceDrawer'
@@ -23,6 +24,7 @@ export default function ResourceCatalog() {
     const [selectedResource, setSelectedResource] = useState(null)
     const [sortCol, setSortCol] = useState(null)
     const [sortDir, setSortDir] = useState('asc')
+    const [inflationOn, setInflationOn] = useState(false)
 
     const filters = useMemo(() => ({
         search,
@@ -34,6 +36,7 @@ export default function ResourceCatalog() {
     const { resources, loading, error, createResource, updateResource, deleteResource } = useResources(filters)
     const categories = useCategories()
     const suppliers = useSupplierList()
+    const inflationRates = useInflationRatesReadonly()
 
     function handleSort(col) {
         if (sortCol === col) {
@@ -143,6 +146,17 @@ export default function ResourceCatalog() {
                         <List size={15} strokeWidth={1.5} />
                     </button>
                 </div>
+
+                <div className={`rc-inflation-toggle ${inflationOn ? 'active' : ''}`}>
+                    <button
+                        className="rc-inflation-toggle-btn"
+                        onClick={() => setInflationOn(s => !s)}
+                        title="Toggle inflation-adjusted prices based on procured date"
+                    >
+                        <TrendingUp size={14} strokeWidth={1.5} />
+                        {inflationOn ? 'Inflation on' : 'Inflation off'}
+                    </button>
+                </div>
             </div>
 
             {/* ── Filter panel ── */}
@@ -228,6 +242,8 @@ export default function ResourceCatalog() {
                             onDelete={setDeleteTarget}
                             onClick={() => setSelectedResource(r.id === selectedResource?.id ? null : r)}
                             selected={selectedResource?.id === r.id}
+                            inflationOn={inflationOn}
+                            adjustedCost={inflationOn ? adjustedResourceCost(r, inflationRates) : null}
                             style={{ animationDelay: `${i * 40}ms` }}
                         />
                     ))}
@@ -297,8 +313,19 @@ export default function ResourceCatalog() {
                                     </td>
                                     <td className="rc-muted">{r.suppliers?.name ?? '—'}</td>
                                     <td className="rc-cost-cell">
-                                        {new Intl.NumberFormat('en-PH', { style: 'currency', currency: r.currency || 'PHP' }).format(r.unit_cost)}
-                                        {r.unit && <span className="rc-unit"> {r.unit}</span>}
+                                        {inflationOn && r.procured_at ? (
+                                            <div>
+                                                <div>{new Intl.NumberFormat('en-PH', { style: 'currency', currency: r.currency || 'PHP' }).format(adjustedResourceCost(r, inflationRates))}</div>
+                                                <div style={{ fontSize: 11, color: '#aaa89f', textDecoration: 'line-through', textDecorationColor: '#c9a84c' }}>
+                                                    {new Intl.NumberFormat('en-PH', { style: 'currency', currency: r.currency || 'PHP' }).format(r.unit_cost)}
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <>
+                                                {new Intl.NumberFormat('en-PH', { style: 'currency', currency: r.currency || 'PHP' }).format(r.unit_cost)}
+                                                {r.unit && <span className="rc-unit"> {r.unit}</span>}
+                                            </>
+                                        )}
                                     </td>
                                     <td className="rc-muted">{r.quantity ?? 0}</td>
                                     <td>

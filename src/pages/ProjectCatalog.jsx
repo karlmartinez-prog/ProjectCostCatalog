@@ -5,6 +5,8 @@ import {
     AlertTriangle, TrendingUp, Calculator
 } from 'lucide-react'
 import { useProjects } from '../hooks/useProjects'
+import { useInflationRatesReadonly } from '../hooks/useResources'
+import { resolveRate, adjustForInflation } from '../services/inflationEngine'
 import ProjectModal from '../components/projects/ProjectModal'
 import EstimatorModal from '../components/projects/EstimatorModal'
 import '../components/projects/projects.css'
@@ -44,7 +46,7 @@ export default function ProjectCatalog() {
     const [filterStatus, setFilterStatus] = useState('')
     const [showFilters, setShowFilters] = useState(false)
     const [inflationOn, setInflationOn] = useState(false)
-    const [inflationYear, setInflationYear] = useState(new Date().getFullYear())
+    const [inflationYear, setInflationYear] = useState(new Date().getFullYear() + 3)
     const [modalOpen, setModalOpen] = useState(false)
     const [editing, setEditing] = useState(null)
     const [editLineItems, setEditLineItems] = useState([])
@@ -55,6 +57,7 @@ export default function ProjectCatalog() {
 
     const filters = useMemo(() => ({ search, status: filterStatus }), [search, filterStatus])
     const { projects, loading, error, createProject, updateProject, deleteProject } = useProjects(filters)
+    const inflationRates = useInflationRatesReadonly()
 
     function showToast(msg, type = 'success') {
         setToast({ msg, type })
@@ -97,12 +100,18 @@ export default function ProjectCatalog() {
         setDeleteTarget(null)
     }
 
-    // Inflation-adjusted cost (simple 6% default per year since no per-project rate here)
+    // Inflation-adjusted cost — inflates from project's start year to the target inflationYear
     function getDisplayCost(project) {
         if (!inflationOn) return formatCost(project.total_cost, project.currency)
-        const years = inflationYear - new Date().getFullYear()
+        const fromYear = project.start_date
+            ? new Date(project.start_date).getFullYear()
+            : new Date(project.created_at).getFullYear()
+        const years = inflationYear - fromYear
         if (years <= 0) return formatCost(project.total_cost, project.currency)
-        const adjusted = project.total_cost * Math.pow(1.06, years)
+        const rate = inflationRates.length > 0
+            ? inflationRates.reduce((s, r) => s + r.rate_percent, 0) / inflationRates.length
+            : 6
+        const adjusted = adjustForInflation(project.total_cost, rate, years)
         return formatCost(adjusted, project.currency)
     }
 

@@ -7,6 +7,8 @@ import {
 } from 'lucide-react'
 import { useProjectDetail } from '../hooks/useProjects'
 import { useProjects } from '../hooks/useProjects'
+import { useInflationRatesReadonly } from '../hooks/useResources'
+import { resolveRate, adjustForInflation } from '../services/inflationEngine'
 import ProjectModal from '../components/projects/ProjectModal'
 import '../components/projects/projects.css'
 
@@ -75,6 +77,9 @@ export default function ProjectDetail() {
     const [deleteOpen, setDeleteOpen] = useState(false)
     const [deleteLoading, setDeleteLoading] = useState(false)
     const [toast, setToast] = useState(null)
+    const [inflationOn, setInflationOn] = useState(false)
+
+    const inflationRates = useInflationRatesReadonly()
 
     function showToast(msg, type = 'success') {
         setToast({ msg, type })
@@ -114,12 +119,36 @@ export default function ProjectDetail() {
 
     const statusCfg = STATUS_CONFIG[project.status] || STATUS_CONFIG.planned
     const StatusIcon = statusCfg.icon
+    const currentYear = new Date().getFullYear()
 
-    // Cost breakdown
-    const capexTotal = lineItems.filter(i => i.capex_opex === 'CAPEX').reduce((s, i) => s + i.total_cost, 0)
-    const opexTotal = lineItems.filter(i => i.capex_opex === 'OPEX').reduce((s, i) => s + i.total_cost, 0)
-    const otherTotal = lineItems.filter(i => !i.capex_opex).reduce((s, i) => s + i.total_cost, 0)
-    const grandTotal = lineItems.reduce((s, i) => s + i.total_cost, 0)
+    // The baseline year for this project — used when a line item has no procured_at
+    const projectBaseYear = project.start_date
+        ? new Date(project.start_date).getFullYear()
+        : new Date(project.created_at).getFullYear()
+
+    // Per-line adjusted costs: inflate from procured_at year (or project base year) → today
+    function getAdjustedLineCost(item) {
+        if (!inflationOn) return item.unit_cost_snapshot
+        const categoryId = item.resources?.categories?.id
+        const from = item.resources?.procured_at
+            ? new Date(item.resources.procured_at).getFullYear()
+            : projectBaseYear
+        if (from >= currentYear) return item.unit_cost_snapshot
+        const rate = resolveRate(categoryId, inflationRates)
+        return adjustForInflation(item.unit_cost_snapshot, rate, currentYear - from)
+    }
+
+    // Cost breakdown — use original or adjusted depending on toggle
+    const displayItems = lineItems.map(item => ({
+        ...item,
+        display_unit_cost: getAdjustedLineCost(item),
+        display_total: getAdjustedLineCost(item) * item.quantity,
+    }))
+
+    const capexTotal = displayItems.filter(i => i.capex_opex === 'CAPEX').reduce((s, i) => s + i.display_total, 0)
+    const opexTotal = displayItems.filter(i => i.capex_opex === 'OPEX').reduce((s, i) => s + i.display_total, 0)
+    const otherTotal = displayItems.filter(i => !i.capex_opex).reduce((s, i) => s + i.display_total, 0)
+    const grandTotal = displayItems.reduce((s, i) => s + i.display_total, 0)
 
     return (
         <div className="pjd-page">
@@ -141,6 +170,16 @@ export default function ProjectDetail() {
                     )}
                 </div>
                 <div className="pjd-hero-actions">
+                    <div className={`pj-inflation-toggle ${inflationOn ? 'active' : ''}`}>
+                        <button
+                            className="pj-inflation-btn"
+                            onClick={() => setInflationOn(s => !s)}
+                            title="Toggle inflation-adjusted costs to today's value"
+                        >
+                            <TrendingUp size={14} strokeWidth={1.5} />
+                            {inflationOn ? 'Inflation on' : 'Inflation off'}
+                        </button>
+                    </div>
                     <button className="btn-ghost" onClick={() => setEditOpen(true)}>
                         <Pencil size={14} strokeWidth={1.5} /> Edit
                     </button>
@@ -156,7 +195,9 @@ export default function ProjectDetail() {
                     <DollarSign size={16} strokeWidth={1.5} />
                     <div>
                         <div className="pjd-stat-value">{formatCost(grandTotal, project.currency)}</div>
-                        <div className="pjd-stat-label">Total cost</div>
+                        <div className="pjd-stat-label">
+                            {inflationOn ? `Adjusted (${projectBaseYear} → ${currentYear})` : 'Total cost'}
+                        </div>
                     </div>
                 </div>
                 <div className="pjd-stat-divider" />
@@ -228,8 +269,15 @@ export default function ProjectDetail() {
 
                     {/* Cost breakdown card */}
                     <div className="card pjd-section">
-                        <div className="pjd-section-title">
-                            <DollarSign size={15} strokeWidth={1.5} /> Cost breakdown
+                        <div className="pjd-section-title" style={{ justifyContent: 'space-between' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                                <DollarSign size={15} strokeWidth={1.5} /> Cost breakdown
+                            </div>
+                            {inflationOn && (
+                                <span className="badge rc-inflation-badge" style={{ fontSize: 11 }}>
+                                    inflation-adjusted · {projectBaseYear} → {currentYear}
+                                </span>
+                            )}
                         </div>
                         {lineItems.length === 0 ? (
                             <p style={{ color: '#aaa89f', fontSize: 13.5 }}>No resources added to this project.</p>
@@ -246,45 +294,55 @@ export default function ProjectDetail() {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {lineItems.map(item => (
-                                            <tr key={item.id}>
-                                                <td>
-                                                    <div className="rt-name-cell">
-                                                        {item.resources?.image_url
-                                                            ? <img src={item.resources.image_url} alt="" className="rt-thumb" />
-                                                            : <div className="rt-thumb-empty" />
-                                                        }
-                                                        <div>
-                                                            <div style={{ fontWeight: 500, fontSize: 13.5 }}>
-                                                                {item.resources?.name || <span style={{ color: '#aaa89f' }}>Custom resource</span>}
+                                        {displayItems.map(item => {
+                                            const isAdjusted = inflationOn && item.display_unit_cost !== item.unit_cost_snapshot
+                                            return (
+                                                <tr key={item.id}>
+                                                    <td>
+                                                        <div className="rt-name-cell">
+                                                            {item.resources?.image_url
+                                                                ? <img src={item.resources.image_url} alt="" className="rt-thumb" />
+                                                                : <div className="rt-thumb-empty" />
+                                                            }
+                                                            <div>
+                                                                <div style={{ fontWeight: 500, fontSize: 13.5 }}>
+                                                                    {item.resources?.name || <span style={{ color: '#aaa89f' }}>Custom resource</span>}
+                                                                </div>
+                                                                {item.resources?.categories && (
+                                                                    <span className={`badge ${item.resources.categories.type === 'CAPEX' ? 'badge-blue' : 'badge-purple'}`}
+                                                                        style={{ fontSize: 10, marginTop: 3 }}>
+                                                                        {item.resources.categories.name}
+                                                                    </span>
+                                                                )}
                                                             </div>
-                                                            {item.resources?.categories && (
-                                                                <span className={`badge ${item.resources.categories.type === 'CAPEX' ? 'badge-blue' : 'badge-purple'}`}
-                                                                    style={{ fontSize: 10, marginTop: 3 }}>
-                                                                    {item.resources.categories.name}
-                                                                </span>
+                                                        </div>
+                                                    </td>
+                                                    <td>
+                                                        {item.capex_opex
+                                                            ? <span className={`badge ${item.capex_opex === 'CAPEX' ? 'badge-blue' : 'badge-purple'}`}>{item.capex_opex}</span>
+                                                            : <span className="badge badge-gray">—</span>
+                                                        }
+                                                    </td>
+                                                    <td style={{ textAlign: 'right' }}>
+                                                        <div style={{ fontWeight: 500 }}>
+                                                            {formatCost(item.display_unit_cost, project.currency)}
+                                                            {item.resources?.unit && (
+                                                                <span style={{ color: '#aaa89f', fontWeight: 400, fontSize: 11 }}> {item.resources.unit}</span>
                                                             )}
                                                         </div>
-                                                    </div>
-                                                </td>
-                                                <td>
-                                                    {item.capex_opex
-                                                        ? <span className={`badge ${item.capex_opex === 'CAPEX' ? 'badge-blue' : 'badge-purple'}`}>{item.capex_opex}</span>
-                                                        : <span className="badge badge-gray">—</span>
-                                                    }
-                                                </td>
-                                                <td style={{ textAlign: 'right', fontWeight: 500 }}>
-                                                    {formatCost(item.unit_cost_snapshot, project.currency)}
-                                                    {item.resources?.unit && (
-                                                        <span style={{ color: '#aaa89f', fontWeight: 400, fontSize: 11 }}> {item.resources.unit}</span>
-                                                    )}
-                                                </td>
-                                                <td style={{ textAlign: 'center', color: '#7a7872' }}>{item.quantity}</td>
-                                                <td style={{ textAlign: 'right', fontWeight: 650, color: '#1a1917' }}>
-                                                    {formatCost(item.total_cost, project.currency)}
-                                                </td>
-                                            </tr>
-                                        ))}
+                                                        {isAdjusted && (
+                                                            <div style={{ fontSize: 11, color: '#aaa89f', textDecoration: 'line-through', textDecorationColor: '#c9a84c' }}>
+                                                                {formatCost(item.unit_cost_snapshot, project.currency)}
+                                                            </div>
+                                                        )}
+                                                    </td>
+                                                    <td style={{ textAlign: 'center', color: '#7a7872' }}>{item.quantity}</td>
+                                                    <td style={{ textAlign: 'right', fontWeight: 650, color: '#1a1917' }}>
+                                                        {formatCost(item.display_total, project.currency)}
+                                                    </td>
+                                                </tr>
+                                            )
+                                        })}
                                     </tbody>
                                 </table>
 
@@ -309,9 +367,24 @@ export default function ProjectDetail() {
                                         </div>
                                     )}
                                     <div className="pjd-cost-row pjd-cost-total">
-                                        <span>Grand total</span>
+                                        <span>
+                                            {inflationOn
+                                                ? `Adjusted total (${projectBaseYear} → ${currentYear})`
+                                                : 'Grand total'}
+                                        </span>
                                         <span>{formatCost(grandTotal, project.currency)}</span>
                                     </div>
+                                    {inflationOn && project.total_cost !== grandTotal && (
+                                        <div className="pjd-cost-row" style={{ fontSize: 12, color: '#aaa89f' }}>
+                                            <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                                                <TrendingUp size={11} style={{ color: '#c9a84c' }} />
+                                                Original total ({projectBaseYear})
+                                            </span>
+                                            <span style={{ textDecoration: 'line-through', textDecorationColor: '#c9a84c' }}>
+                                                {formatCost(project.total_cost, project.currency)}
+                                            </span>
+                                        </div>
+                                    )}
                                 </div>
                             </>
                         )}

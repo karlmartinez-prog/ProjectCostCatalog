@@ -1,4 +1,4 @@
-import { Package, Pencil, Trash2, Eye } from 'lucide-react'
+import { Package, Pencil, Trash2, Eye, TrendingUp } from 'lucide-react'
 
 const STATUS_STYLE = {
     active: 'badge-green',
@@ -28,8 +28,11 @@ export function timeAgo(date) {
     return `${Math.floor(days / 365)}y ago`
 }
 
-export default function ResourceCard({ resource, onEdit, onDelete, onClick, selected }) {
+export default function ResourceCard({ resource, onEdit, onDelete, onClick, selected, inflationOn, adjustedCost }) {
     const { name, image_url, unit_cost, currency, unit, status, quantity, categories, suppliers, created_at, procured_at } = resource
+
+    const showAdjusted = inflationOn && adjustedCost != null && adjustedCost !== unit_cost
+    const displayCost = showAdjusted ? adjustedCost : unit_cost
 
     return (
         <div
@@ -58,9 +61,16 @@ export default function ResourceCard({ resource, onEdit, onDelete, onClick, sele
                 </div>
 
                 <div className="rc-cost">
-                    {formatPeso(unit_cost, currency)}
+                    {formatPeso(displayCost, currency)}
                     {unit && <span className="rc-unit"> {unit}</span>}
                 </div>
+
+                {showAdjusted && (
+                    <div className="rc-original-cost">
+                        <TrendingUp size={10} strokeWidth={2} />
+                        original: {formatPeso(unit_cost, currency)}
+                    </div>
+                )}
 
                 <div className="rc-meta">
                     {categories && (
@@ -71,6 +81,9 @@ export default function ResourceCard({ resource, onEdit, onDelete, onClick, sele
                     <span className={`badge ${STATUS_STYLE[status] || 'badge-gray'}`}>
                         {status}
                     </span>
+                    {showAdjusted && (
+                        <span className="badge rc-inflation-badge">inflation-adjusted</span>
+                    )}
                 </div>
 
                 <div className="rc-footer">

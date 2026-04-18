@@ -861,3 +861,62 @@
 .rc-table-row.rc-row-selected td:first-child {
     padding-left: 13px;
 }
+
+/* ── Inflation adjusted price ───────────────────────── */
+.rc-original-cost {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11.5px;
+    color: #aaa89f;
+    margin-top: -4px;
+    text-decoration: line-through;
+    text-decoration-color: #c9a84c;
+}
+
+.rc-original-cost svg {
+    color: #c9a84c;
+    flex-shrink: 0;
+}
+
+.rc-inflation-badge {
+    background: rgba(201, 168, 76, 0.12);
+    color: #8a6800;
+    font-size: 10px;
+}
+
+/* ── Inflation toolbar toggle (resource catalog) ─────── */
+.rc-inflation-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    background: #fff;
+    border: 1px solid #e0ddd5;
+    border-radius: 8px;
+    overflow: hidden;
+    transition: border-color 0.15s;
+    white-space: nowrap;
+}
+
+.rc-inflation-toggle.active {
+    border-color: #c9a84c;
+}
+
+.rc-inflation-toggle-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 13px;
+    background: none;
+    border: none;
+    font-family: inherit;
+    font-size: 13px;
+    color: #4a4844;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+}
+
+.rc-inflation-toggle.active .rc-inflation-toggle-btn {
+    color: #c9a84c;
+    background: rgba(201, 168, 76, 0.06);
+}
