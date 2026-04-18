@@ -9,6 +9,7 @@ import ProjectDetail from './pages/ProjectDetail'
 import ResourceCatalog from './pages/ResourceCatalog'
 import Suppliers from './pages/Suppliers'
 import Insights from './pages/Insights'
+import Settings from './pages/Settings'
 import Login from './pages/Login'
 
 function ProtectedRoute({ session, children }) {
@@ -52,6 +53,7 @@ export default function App() {
           <Route path="resources" element={<ResourceCatalog />} />
           <Route path="suppliers" element={<Suppliers />} />
           <Route path="insights" element={<Insights />} />
+          <Route path="settings" element={<Settings />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

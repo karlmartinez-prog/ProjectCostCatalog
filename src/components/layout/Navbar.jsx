@@ -7,6 +7,7 @@ const PAGE_TITLES = {
     '/resources': 'Resource Catalog',
     '/suppliers': 'Suppliers',
     '/insights': 'Business Insights',
+    '/settings': 'Settings',
 }
 
 export default function Navbar({ session }) {

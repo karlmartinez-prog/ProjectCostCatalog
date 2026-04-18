@@ -6,6 +6,7 @@ import {
     Package,
     Truck,
     BarChart3,
+    Settings,
     LogOut,
     Boxes
 } from 'lucide-react'
@@ -16,6 +17,7 @@ const navItems = [
     { to: '/resources', label: 'Resource Catalog', icon: Package },
     { to: '/suppliers', label: 'Suppliers', icon: Truck },
     { to: '/insights', label: 'Insights', icon: BarChart3 },
+    { to: '/settings', label: 'Settings', icon: Settings },
 ]
 
 export default function Sidebar() {
