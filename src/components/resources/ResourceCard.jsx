@@ -1,4 +1,4 @@
-import { Package, Pencil, Trash2 } from 'lucide-react'
+import { Package, Pencil, Trash2, Eye } from 'lucide-react'
 
 const STATUS_STYLE = {
     active: 'badge-green',
@@ -28,11 +28,15 @@ export function timeAgo(date) {
     return `${Math.floor(days / 365)}y ago`
 }
 
-export default function ResourceCard({ resource, onEdit, onDelete }) {
+export default function ResourceCard({ resource, onEdit, onDelete, onClick, selected }) {
     const { name, image_url, unit_cost, currency, unit, status, quantity, categories, suppliers, created_at, procured_at } = resource
 
     return (
-        <div className="resource-card">
+        <div
+            className={`resource-card ${selected ? 'rc-selected' : ''}`}
+            onClick={onClick}
+            style={{ cursor: 'pointer' }}
+        >
             <div className="rc-image">
                 {image_url
                     ? <img src={image_url} alt={name} />
@@ -44,10 +48,10 @@ export default function ResourceCard({ resource, onEdit, onDelete }) {
                 <div className="rc-top">
                     <div className="rc-name">{name}</div>
                     <div className="rc-actions">
-                        <button className="rc-btn" onClick={() => onEdit(resource)} title="Edit">
+                        <button className="rc-btn" onClick={e => { e.stopPropagation(); onEdit(resource) }} title="Edit">
                             <Pencil size={14} strokeWidth={1.5} />
                         </button>
-                        <button className="rc-btn rc-btn-danger" onClick={() => onDelete(resource)} title="Delete">
+                        <button className="rc-btn rc-btn-danger" onClick={e => { e.stopPropagation(); onDelete(resource) }} title="Delete">
                             <Trash2 size={14} strokeWidth={1.5} />
                         </button>
                     </div>
@@ -78,6 +82,11 @@ export default function ResourceCard({ resource, onEdit, onDelete }) {
                         </span>
                         : <span className="rc-detail">{timeAgo(created_at)}</span>
                     }
+                </div>
+
+                <div className="sp-click-hint" style={{ marginTop: 4 }}>
+                    <Eye size={12} strokeWidth={1.5} />
+                    <span>Click to view details</span>
                 </div>
             </div>
         </div>

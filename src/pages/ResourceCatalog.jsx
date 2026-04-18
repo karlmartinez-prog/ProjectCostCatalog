@@ -1,8 +1,9 @@
 import { useState, useMemo } from 'react'
-import { Plus, Search, SlidersHorizontal, LayoutGrid, List, AlertTriangle, Pencil, Trash2, X } from 'lucide-react'
+import { Plus, Search, SlidersHorizontal, LayoutGrid, List, AlertTriangle, Pencil, Trash2, X, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react'
 import { useResources, useCategories, useSupplierList } from '../hooks/useResources'
 import ResourceCard from '../components/resources/ResourceCard'
 import ResourceModal from '../components/resources/ResourceModal'
+import ResourceDrawer from '../components/resources/ResourceDrawer'
 import '../components/resources/resources.css'
 
 const STATUSES = ['active', 'pending', 'discontinued']
@@ -19,6 +20,9 @@ export default function ResourceCatalog() {
     const [deleteTarget, setDeleteTarget] = useState(null)
     const [deleteLoading, setDeleteLoading] = useState(false)
     const [toast, setToast] = useState(null)
+    const [selectedResource, setSelectedResource] = useState(null)
+    const [sortCol, setSortCol] = useState(null)
+    const [sortDir, setSortDir] = useState('asc')
 
     const filters = useMemo(() => ({
         search,
@@ -30,6 +34,34 @@ export default function ResourceCatalog() {
     const { resources, loading, error, createResource, updateResource, deleteResource } = useResources(filters)
     const categories = useCategories()
     const suppliers = useSupplierList()
+
+    function handleSort(col) {
+        if (sortCol === col) {
+            setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+        } else {
+            setSortCol(col)
+            setSortDir('asc')
+        }
+    }
+
+    const sortedResources = useMemo(() => {
+        if (!sortCol) return resources
+        return [...resources].sort((a, b) => {
+            let aVal, bVal
+            switch (sortCol) {
+                case 'name': aVal = a.name?.toLowerCase() ?? ''; bVal = b.name?.toLowerCase() ?? ''; break
+                case 'category': aVal = a.categories?.name?.toLowerCase() ?? ''; bVal = b.categories?.name?.toLowerCase() ?? ''; break
+                case 'supplier': aVal = a.suppliers?.name?.toLowerCase() ?? ''; bVal = b.suppliers?.name?.toLowerCase() ?? ''; break
+                case 'unit_cost': aVal = a.unit_cost ?? 0; bVal = b.unit_cost ?? 0; break
+                case 'procured_at': aVal = a.procured_at ? new Date(a.procured_at).getTime() : 0; bVal = b.procured_at ? new Date(b.procured_at).getTime() : 0; break
+                case 'created_at': aVal = new Date(a.created_at).getTime(); bVal = new Date(b.created_at).getTime(); break
+                default: return 0
+            }
+            if (aVal < bVal) return sortDir === 'asc' ? -1 : 1
+            if (aVal > bVal) return sortDir === 'asc' ? 1 : -1
+            return 0
+        })
+    }, [resources, sortCol, sortDir])
 
     function showToast(msg, type = 'success') {
         setToast({ msg, type })
@@ -54,6 +86,7 @@ export default function ResourceCatalog() {
         setDeleteLoading(true)
         try {
             await deleteResource(deleteTarget.id)
+            if (selectedResource?.id === deleteTarget.id) setSelectedResource(null)
             showToast('Resource deleted.', 'danger')
         } catch (e) {
             showToast(e.message, 'danger')
@@ -193,6 +226,8 @@ export default function ResourceCatalog() {
                             resource={r}
                             onEdit={openEdit}
                             onDelete={setDeleteTarget}
+                            onClick={() => setSelectedResource(r.id === selectedResource?.id ? null : r)}
+                            selected={selectedResource?.id === r.id}
                             style={{ animationDelay: `${i * 40}ms` }}
                         />
                     ))}
@@ -205,20 +240,46 @@ export default function ResourceCatalog() {
                     <table className="rc-table">
                         <thead>
                             <tr>
-                                <th>Name</th>
-                                <th>Category</th>
-                                <th>Supplier</th>
-                                <th>Unit cost</th>
-                                <th>Qty</th>
-                                <th>Status</th>
-                                <th>Procured</th>
-                                <th>Added</th>
-                                <th></th>
+                                {[
+                                    { label: 'Name', col: 'name' },
+                                    { label: 'Category', col: 'category' },
+                                    { label: 'Supplier', col: 'supplier' },
+                                    { label: 'Unit cost', col: 'unit_cost' },
+                                    { label: 'Qty', col: null },
+                                    { label: 'Status', col: null },
+                                    { label: 'Procured', col: 'procured_at' },
+                                    { label: 'Added', col: 'created_at' },
+                                    { label: '', col: null },
+                                ].map(({ label, col }) => (
+                                    <th
+                                        key={label}
+                                        onClick={col ? () => handleSort(col) : undefined}
+                                        className={col ? 'rc-th-sortable' : ''}
+                                    >
+                                        {col ? (
+                                            <span className="rc-th-inner">
+                                                {label}
+                                                <span className="rc-sort-icon">
+                                                    {sortCol === col
+                                                        ? sortDir === 'asc'
+                                                            ? <ChevronUp size={12} strokeWidth={2} />
+                                                            : <ChevronDown size={12} strokeWidth={2} />
+                                                        : <ChevronsUpDown size={12} strokeWidth={1.5} className="rc-sort-idle" />
+                                                    }
+                                                </span>
+                                            </span>
+                                        ) : label}
+                                    </th>
+                                ))}
                             </tr>
                         </thead>
                         <tbody>
-                            {resources.map(r => (
-                                <tr key={r.id}>
+                            {sortedResources.map(r => (
+                                <tr
+                                    key={r.id}
+                                    className={`rc-table-row ${selectedResource?.id === r.id ? 'rc-row-selected' : ''}`}
+                                    onClick={() => setSelectedResource(r.id === selectedResource?.id ? null : r)}
+                                >
                                     <td>
                                         <div className="rt-name-cell">
                                             {r.image_url
@@ -253,7 +314,7 @@ export default function ResourceCatalog() {
                                     <td className="rc-muted" style={{ fontSize: 12 }}>
                                         {new Date(r.created_at).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}
                                     </td>
-                                    <td>
+                                    <td onClick={e => e.stopPropagation()}>
                                         <div style={{ display: 'flex', gap: 4 }}>
                                             <button className="rc-btn" onClick={() => openEdit(r)}><Pencil size={13} /></button>
                                             <button className="rc-btn rc-btn-danger" onClick={() => setDeleteTarget(r)}><Trash2 size={13} /></button>
@@ -265,6 +326,13 @@ export default function ResourceCatalog() {
                     </table>
                 </div>
             )}
+
+            {/* ── Resource detail drawer ── */}
+            <ResourceDrawer
+                resource={selectedResource}
+                onClose={() => setSelectedResource(null)}
+                onEdit={r => { setSelectedResource(null); openEdit(r) }}
+            />
 
             {/* ── Add / Edit Modal ── */}
             <ResourceModal

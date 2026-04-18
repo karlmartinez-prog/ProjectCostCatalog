@@ -250,6 +250,11 @@
     transform: translateY(-1px);
 }
 
+.resource-card.rc-selected {
+    border-color: #c9a84c;
+    box-shadow: 0 0 0 3px rgba(201, 168, 76, 0.12);
+}
+
 .rc-image {
     height: 130px;
     background: #f4f3ef;
@@ -767,4 +772,92 @@
         opacity: 0;
         transform: translateY(8px);
     }
+}
+
+/* ── Resource Drawer extras ─────────────────────────── */
+.rd-image-banner {
+    width: 100%;
+    height: 180px;
+    background: #f4f3ef;
+    overflow: hidden;
+    flex-shrink: 0;
+}
+
+.rd-image-banner img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.rd-image-placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #ccc9c0;
+}
+
+.rd-callout {
+    margin: 0 20px 24px;
+    background: #f9f8f5;
+    border: 1px solid #e5e2d9;
+    border-radius: 10px;
+    padding: 14px 16px;
+}
+
+.rd-callout-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+/* ── Sortable table headers ─────────────────────────── */
+.rc-th-sortable {
+    cursor: pointer;
+    user-select: none;
+}
+
+.rc-th-sortable:hover {
+    background: #f0ede8;
+    color: #1a1917;
+}
+
+.rc-th-inner {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.rc-sort-icon {
+    display: inline-flex;
+    align-items: center;
+    color: #1a1917;
+    flex-shrink: 0;
+}
+
+.rc-sort-idle {
+    color: #ccc9c0;
+}
+
+.rc-th-sortable:hover .rc-sort-idle {
+    color: #aaa89f;
+}
+
+/* ── Clickable table rows ───────────────────────────── */
+.rc-table-row {
+    cursor: pointer;
+}
+
+.rc-table-row:hover {
+    background: #faf9f6;
+}
+
+.rc-table-row.rc-row-selected {
+    background: rgba(201, 168, 76, 0.05);
+    box-shadow: inset 3px 0 0 #c9a84c;
+}
+
+.rc-table-row.rc-row-selected td:first-child {
+    padding-left: 13px;
 }
