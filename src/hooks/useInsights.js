@@ -59,8 +59,7 @@ export function useInsights(quarterCount = 4) {
                     supabase
                         .from('project_resources')
                         .select('*, resources(id, name, categories(id, name, type))')
-                        .order('created_at', { ascending: true }),
-                ])
+                        .order('created_at', { ascending: true }),])
 
                 if (e1 || e2 || e3 || e4 || e5)
                     throw new Error([e1, e2, e3, e4, e5].find(e => e)?.message)
@@ -129,7 +128,15 @@ export function useInflationRates() {
 }
 
 // ── Helpers ───────────────────────────────────────────
+function normaliseItems(lineItems) {
+    return (lineItems || []).map(i => ({
+        ...i,
+        capex_opex: i.capex_opex || i.resources?.categories?.type || null,
+    }))
+}
+
 function buildQuarterlyData(lineItems, count) {
+    const items = normaliseItems(lineItems)
     const now = new Date()
     const quarters = []
 
@@ -142,7 +149,7 @@ function buildQuarterlyData(lineItems, count) {
         quarters.push({ label, qStart, qEnd, capex: 0, opex: 0, total: 0 })
     }
 
-    for (const item of lineItems) {
+    for (const item of items) {
         const date = new Date(item.created_at)
         const q = quarters.find(q => date >= q.qStart && date <= q.qEnd)
         if (!q) continue
@@ -161,8 +168,9 @@ function buildQuarterlyData(lineItems, count) {
 }
 
 function buildCategorySpend(lineItems) {
+    const items = normaliseItems(lineItems)
     const map = {}
-    for (const item of lineItems) {
+    for (const item of items) {
         const cat = item.resources?.categories
         const key = cat?.id || 'untagged'
         const name = cat?.name || 'Untagged'

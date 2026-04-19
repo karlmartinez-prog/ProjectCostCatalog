@@ -27,7 +27,7 @@ export function useDashboard() {
                     supabase.from('projects').select('id, name, status, total_cost, currency, created_at'),
                     supabase.from('resources').select('id, name, status, unit_cost, quantity, created_at'),
                     supabase.from('suppliers').select('id, status'),
-                    supabase.from('project_resources').select('capex_opex, total_cost, created_at'),
+                    supabase.from('project_resources').select('capex_opex, total_cost, created_at, resources(categories(type))'),
                     supabase
                         .from('resources')
                         .select('id, name, unit_cost, currency, status, created_at, categories(name, type), suppliers(name)')
@@ -44,21 +44,27 @@ export function useDashboard() {
                     throw new Error([e1, e2, e3, e4, e5, e6].find(e => e)?.message)
                 }
 
+                // Normalise: if capex_opex is blank, fall back to the resource's category type
+                const normalisedItems = (lineItems || []).map(i => ({
+                    ...i,
+                    capex_opex: i.capex_opex || i.resources?.categories?.type || null,
+                }))
+
                 // ── KPI Stats ──────────────────────────────────
-                const totalCapex = (lineItems || [])
+                const totalCapex = normalisedItems
                     .filter(i => i.capex_opex === 'CAPEX')
                     .reduce((s, i) => s + (i.total_cost || 0), 0)
 
-                const totalOpex = (lineItems || [])
+                const totalOpex = normalisedItems
                     .filter(i => i.capex_opex === 'OPEX')
                     .reduce((s, i) => s + (i.total_cost || 0), 0)
 
                 const currentYear = new Date().getFullYear()
-                const capexThisYear = (lineItems || [])
+                const capexThisYear = normalisedItems
                     .filter(i => i.capex_opex === 'CAPEX' && new Date(i.created_at).getFullYear() === currentYear)
                     .reduce((s, i) => s + (i.total_cost || 0), 0)
 
-                const opexThisYear = (lineItems || [])
+                const opexThisYear = normalisedItems
                     .filter(i => i.capex_opex === 'OPEX' && new Date(i.created_at).getFullYear() === currentYear)
                     .reduce((s, i) => s + (i.total_cost || 0), 0)
 
@@ -82,7 +88,7 @@ export function useDashboard() {
                 })
 
                 // ── CAPEX vs OPEX chart ─────────────────────────
-                const untagged = (lineItems || [])
+                const untagged = normalisedItems
                     .filter(i => !i.capex_opex)
                     .reduce((s, i) => s + (i.total_cost || 0), 0)
 
@@ -104,7 +110,7 @@ export function useDashboard() {
                     }
                 })
 
-                for (const item of lineItems || []) {
+                for (const item of normalisedItems) {
                     const key = item.created_at?.slice(0, 7)
                     const m = months.find(m => m.key === key)
                     if (!m) continue

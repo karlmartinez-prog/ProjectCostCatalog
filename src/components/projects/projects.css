@@ -837,3 +837,332 @@
     font-size: 13px;
     color: #c9a84c;
 }
+
+/* ── Two-panel project modal ────────────────────────── */
+.pm-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(26, 25, 23, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    padding: 20px;
+    backdrop-filter: blur(2px);
+    animation: fadeIn 0.15s ease;
+}
+
+.pm-box {
+    background: #fff;
+    border-radius: 16px;
+    width: 100%;
+    max-width: 980px;
+    max-height: 92vh;
+    display: flex;
+    flex-direction: column;
+    animation: modalIn 0.2s ease;
+    overflow: hidden;
+}
+
+.pm-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 24px 16px;
+    border-bottom: 1px solid #e5e2d9;
+    flex-shrink: 0;
+}
+
+.pm-header h3 {
+    font-size: 17px;
+    font-weight: 650;
+    color: #1a1917;
+    letter-spacing: -0.3px;
+}
+
+.pm-body {
+    display: grid;
+    grid-template-columns: 340px 1fr;
+    flex: 1;
+    overflow: hidden;
+    min-height: 0;
+}
+
+/* ── Left panel ─────────────────────────────────────── */
+.pm-left {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 20px 22px;
+    border-right: 1px solid #e5e2d9;
+    overflow-y: auto;
+}
+
+.pm-panel-title {
+    font-size: 11px;
+    font-weight: 700;
+    color: #9a9790;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    margin-bottom: 2px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.pm-form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+
+.pm-cost-summary {
+    margin-top: auto;
+    padding-top: 14px;
+    border-top: 1px solid #f0ede8;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.pm-cost-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 13px;
+    color: #4a4844;
+}
+
+.pm-cost-total {
+    font-size: 14px;
+    font-weight: 700;
+    color: #1a1917;
+    padding-top: 8px;
+    border-top: 1px solid #e5e2d9;
+}
+
+.pm-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+}
+
+/* ── Right panel ────────────────────────────────────── */
+.pm-right {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 20px 22px;
+    overflow-y: auto;
+    background: #faf9f7;
+}
+
+.pm-resource-count {
+    background: #1a1917;
+    color: #f0ede6;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 7px;
+    border-radius: 99px;
+}
+
+.pm-empty-resources {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 48px 20px;
+    text-align: center;
+    color: #ccc9c0;
+    gap: 8px;
+}
+
+.pm-empty-resources p {
+    font-size: 14px;
+    font-weight: 500;
+    color: #4a4844;
+    margin: 0;
+}
+
+.pm-empty-resources span {
+    font-size: 13px;
+    color: #aaa89f;
+}
+
+/* ── Item cards ─────────────────────────────────────── */
+.pm-items-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.pm-item-card {
+    background: #fff;
+    border: 1px solid #e5e2d9;
+    border-radius: 10px;
+    overflow: hidden;
+    animation: fadeInUp 0.18s ease both;
+}
+
+.pm-item-top {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px 8px;
+}
+
+.pm-item-thumb {
+    width: 30px;
+    height: 30px;
+    border-radius: 7px;
+    background: #f4f3ef;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #ccc9c0;
+    flex-shrink: 0;
+    overflow: hidden;
+}
+
+.pm-item-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.pm-item-name-wrap {
+    flex: 1;
+    min-width: 0;
+}
+
+.pm-item-name-fixed {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 13.5px;
+    font-weight: 600;
+    color: #1a1917;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.pm-item-unit {
+    font-size: 11.5px;
+    font-weight: 400;
+    color: #aaa89f;
+}
+
+/* ── Item fields row ────────────────────────────────── */
+.pm-item-fields {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    padding: 0 12px 10px;
+    border-bottom: 1px solid #f4f3ef;
+}
+
+.pm-item-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex: 1;
+}
+
+.pm-item-field label {
+    font-size: 10.5px;
+    font-weight: 600;
+    color: #9a9790;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+}
+
+/* ── Category display (catalog resource) ────────────── */
+.pm-cat-display {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.pm-cat-override {
+    width: 22px;
+    height: 22px;
+    border-radius: 5px;
+    border: 1px solid #e0ddd5;
+    background: #f9f8f5;
+    color: #aaa89f;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: all 0.15s;
+}
+
+.pm-cat-override:hover {
+    background: #f0ede8;
+    color: #4a4844;
+    border-color: #c9a84c;
+}
+
+/* ── Subtotal row ───────────────────────────────────── */
+.pm-item-subtotal-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 7px 12px;
+    background: #faf9f7;
+}
+
+.pm-item-subtotal-label {
+    font-size: 11.5px;
+    color: #aaa89f;
+}
+
+.pm-item-subtotal-value {
+    font-size: 13.5px;
+    font-weight: 700;
+    color: #1a1917;
+}
+
+/* ── Resource picker thumbnail ──────────────────────── */
+.rp-result-thumb {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    background: #f4f3ef;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #ccc9c0;
+    flex-shrink: 0;
+    overflow: hidden;
+}
+
+.rp-result-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.rp-type-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 1px 5px;
+    border-radius: 99px;
+    font-size: 9.5px;
+    font-weight: 600;
+    margin-left: 4px;
+}
+
+.rp-type-pill.capex {
+    background: #e8f0fe;
+    color: #1a56c4;
+}
+
+.rp-type-pill.opex {
+    background: #f2eeff;
+    color: #6b3fa0;
+}
