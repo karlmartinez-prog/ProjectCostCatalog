@@ -8,7 +8,7 @@ import {
 import { useProjectDetail } from '../hooks/useProjects'
 import { useProjects } from '../hooks/useProjects'
 import { useInflationRatesReadonly } from '../hooks/useResources'
-import { resolveRate, adjustForInflation } from '../services/inflationEngine'
+import { adjustedLineItemCost } from '../services/inflationEngine'
 import ProjectModal from '../components/projects/ProjectModal'
 import '../components/projects/projects.css'
 
@@ -126,16 +126,10 @@ export default function ProjectDetail() {
         ? new Date(project.start_date).getFullYear()
         : new Date(project.created_at).getFullYear()
 
-    // Per-line adjusted costs: inflate from procured_at year (or project base year) → today
+    // Per-line YoY compounding: procured_at year (or project base year) → today
     function getAdjustedLineCost(item) {
         if (!inflationOn) return item.unit_cost_snapshot
-        const categoryId = item.resources?.categories?.id
-        const from = item.resources?.procured_at
-            ? new Date(item.resources.procured_at).getFullYear()
-            : projectBaseYear
-        if (from >= currentYear) return item.unit_cost_snapshot
-        const rate = resolveRate(categoryId, inflationRates)
-        return adjustForInflation(item.unit_cost_snapshot, rate, currentYear - from)
+        return adjustedLineItemCost(item, inflationRates, currentYear, projectBaseYear)
     }
 
     // Cost breakdown — use original or adjusted depending on toggle

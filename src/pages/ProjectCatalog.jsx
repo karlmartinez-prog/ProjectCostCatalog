@@ -6,7 +6,7 @@ import {
 } from 'lucide-react'
 import { useProjects } from '../hooks/useProjects'
 import { useInflationRatesReadonly } from '../hooks/useResources'
-import { resolveRate, adjustForInflation } from '../services/inflationEngine'
+import { adjustedProjectCost } from '../services/inflationEngine'
 import ProjectModal from '../components/projects/ProjectModal'
 import EstimatorModal from '../components/projects/EstimatorModal'
 import '../components/projects/projects.css'
@@ -100,18 +100,14 @@ export default function ProjectCatalog() {
         setDeleteTarget(null)
     }
 
-    // Inflation-adjusted cost — inflates from project's start year to the target inflationYear
+    // Inflation-adjusted cost — YoY compounding from project start year → inflationYear
     function getDisplayCost(project) {
         if (!inflationOn) return formatCost(project.total_cost, project.currency)
         const fromYear = project.start_date
             ? new Date(project.start_date).getFullYear()
             : new Date(project.created_at).getFullYear()
-        const years = inflationYear - fromYear
-        if (years <= 0) return formatCost(project.total_cost, project.currency)
-        const rate = inflationRates.length > 0
-            ? inflationRates.reduce((s, r) => s + r.rate_percent, 0) / inflationRates.length
-            : 6
-        const adjusted = adjustForInflation(project.total_cost, rate, years)
+        if (inflationYear <= fromYear) return formatCost(project.total_cost, project.currency)
+        const adjusted = adjustedProjectCost(project, inflationRates, inflationYear)
         return formatCost(adjusted, project.currency)
     }
 
@@ -174,7 +170,7 @@ export default function ProjectCatalog() {
                             <span>to</span>
                             <input
                                 type="number"
-                                min={currentYear}
+                                min={currentYear + 1}
                                 max={currentYear + 30}
                                 value={inflationYear}
                                 onChange={e => setInflationYear(parseInt(e.target.value))}
