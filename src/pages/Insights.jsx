@@ -1,20 +1,30 @@
-import { useState, useRef } from 'react'
+import { useState } from 'react'
 import {
     AreaChart, Area, BarChart, Bar, LineChart, Line,
     XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
 } from 'recharts'
 import {
-    TrendingUp, TrendingDown, Sparkles, ChevronDown, ChevronUp,
-    Plus, Trash2, RefreshCw, AlertTriangle, X, Loader,
-    BarChart3, Activity, Settings2
+    TrendingUp, Sparkles, RefreshCw, AlertTriangle,
+    Loader, BarChart3, Activity, Settings2, Trash2
 } from 'lucide-react'
 import { useInsights, useInflationRates, getPresetRate } from '../hooks/useInsights'
+import { estimateProjectCost } from '../services/aiEstimator'
 import './insights.css'
 
 const PROJECT_TYPES = [
-    'Road / Infrastructure', 'Building Construction', 'Bridge',
-    'Electrical / Power', 'Water / Sanitation', 'IT / Software',
-    'Renovation / Repair', 'Industrial / Manufacturing', 'Other',
+    'Core Network Upgrade',
+    'Site Facilities Improvement',
+    'Fiber / Passive Infrastructure Rollout',
+    'Power and Energy System Installation',
+    'Cooling System Upgrade',
+    'Physical Security System Installation',
+    'Transmission Node Deployment',
+    'Data Center / Equipment Room Build-out',
+    'Civil and Structural Works',
+    'Network Active Equipment Deployment',
+    'Preventive Maintenance Program',
+    'Software / NMS Platform Deployment',
+    'Other',
 ]
 
 const CURRENCIES = ['PHP', 'USD', 'EUR']
@@ -87,51 +97,13 @@ function AiEstimator({ categories }) {
         setError(null)
         setResult(null)
 
-        const categoryList = categories.map(c => `${c.name} (${c.type})`).join(', ')
-
-        const prompt = `You are a construction and project cost estimator for the Philippines.
-
-A user wants to estimate the cost of a project with these details:
-- Project type: ${form.projectType}
-- Location: ${form.location || 'Philippines (general)'}
-- Size / scope: ${form.size || 'Not specified'}
-- Duration: ${form.duration || 'Not specified'}
-- Currency: ${form.currency}
-- Additional notes: ${form.notes || 'None'}
-
-Available cost categories in their system: ${categoryList || 'Civil Works, Electrical, Labor, Materials, Equipment'}
-
-Respond ONLY with a valid JSON object. No markdown, no explanation, no backticks. The JSON must have this exact structure:
-{
-  "summary": "2-3 sentence plain English summary of the estimate",
-  "low": <number>,
-  "mid": <number>,
-  "high": <number>,
-  "currency": "${form.currency}",
-  "breakdown": [
-    { "category": "string", "type": "CAPEX or OPEX", "low": <number>, "mid": <number>, "high": <number>, "note": "string" }
-  ],
-  "assumptions": ["string", "string", "string"]
-}`
-
         try {
-            const res = await fetch('https://api.anthropic.com/v1/messages', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    model: 'claude-sonnet-4-20250514',
-                    max_tokens: 1000,
-                    messages: [{ role: 'user', content: prompt }],
-                }),
-            })
-            const data = await res.json()
-            const text = data.content?.[0]?.text || ''
-            const clean = text.replace(/```json|```/g, '').trim()
-            const parsed = JSON.parse(clean)
+            const parsed = await estimateProjectCost(form, categories)
             setResult(parsed)
         } catch (err) {
-            setError('Failed to get estimate. Please try again.')
+            setError(err.message || 'Failed to get estimate. Please try again.')
         }
+
         setLoading(false)
     }
 
@@ -166,12 +138,12 @@ Respond ONLY with a valid JSON object. No markdown, no explanation, no backticks
                     <div className="mf-group">
                         <label>Size / scope</label>
                         <input value={form.size} onChange={e => set('size', e.target.value)}
-                            placeholder="e.g. 500 sqm, 2km road, 3 floors" />
+                            placeholder="e.g. 3 sites, 2km fiber, 1 equipment room" />
                     </div>
                     <div className="mf-group">
                         <label>Estimated duration</label>
                         <input value={form.duration} onChange={e => set('duration', e.target.value)}
-                            placeholder="e.g. 6 months, 2 years" />
+                            placeholder="e.g. 3 months, Jan–Mar 2025" />
                     </div>
                 </div>
 
@@ -180,7 +152,7 @@ Respond ONLY with a valid JSON object. No markdown, no explanation, no backticks
                     <textarea
                         value={form.notes}
                         onChange={e => set('notes', e.target.value)}
-                        placeholder="Any specific requirements, special conditions, equipment needed, etc."
+                        placeholder="Any specific requirements, special conditions, equipment brands, site access constraints, etc."
                         rows={3}
                     />
                 </div>
@@ -284,7 +256,6 @@ function InflationManager({ categories }) {
     const { rates, loading, upsertRate, deleteRate } = useInflationRates()
     const currentYear = new Date().getFullYear()
     const [saving, setSaving] = useState(null)
-    const [newRow, setNewRow] = useState({ category_id: '', year: currentYear, rate_percent: '' })
 
     async function handleUpsert(categoryId, year, rateStr) {
         const rate = parseFloat(rateStr)
@@ -292,12 +263,6 @@ function InflationManager({ categories }) {
         setSaving(`${categoryId}-${year}`)
         await upsertRate(categoryId, year, rate)
         setSaving(null)
-    }
-
-    async function handleAdd() {
-        if (!newRow.category_id || !newRow.rate_percent) return
-        await upsertRate(newRow.category_id, newRow.year, parseFloat(newRow.rate_percent))
-        setNewRow({ category_id: '', year: currentYear, rate_percent: '' })
     }
 
     const years = [currentYear - 1, currentYear, currentYear + 1, currentYear + 2]
@@ -399,7 +364,6 @@ export default function Insights() {
     const hasQuarterly = quarterlyData.some(q => q.total > 0)
     const hasCategorySpend = categorySpend.length > 0
 
-    // Build cost history chart data grouped by resource
     const historyByResource = {}
     for (const h of costHistory) {
         const name = h.resources?.name || 'Unknown'
