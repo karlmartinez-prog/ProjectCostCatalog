@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { Plus, Search, SlidersHorizontal, LayoutGrid, List, AlertTriangle, Pencil, Trash2, X, ChevronUp, ChevronDown, ChevronsUpDown, TrendingUp } from 'lucide-react'
+import { Plus, Search, SlidersHorizontal, LayoutGrid, List, AlertTriangle, Pencil, Trash2, X, ChevronUp, ChevronDown, ChevronsUpDown, TrendingUp, Package, HardHat, Wrench, MoreHorizontal } from 'lucide-react'
 import { useResources, useCategories, useSupplierList, useInflationRatesReadonly } from '../hooks/useResources'
 import { adjustedResourceCost } from '../services/inflationEngine'
 import ResourceCard from '../components/resources/ResourceCard'
@@ -14,6 +14,7 @@ export default function ResourceCatalog() {
     const [filterCat, setFilterCat] = useState('')
     const [filterSup, setFilterSup] = useState('')
     const [filterStatus, setFilterStatus] = useState('')
+    const [filterType, setFilterType] = useState('')
     const [view, setView] = useState('grid')
     const [showFilters, setShowFilters] = useState(false)
     const [modalOpen, setModalOpen] = useState(false)
@@ -31,7 +32,8 @@ export default function ResourceCatalog() {
         category_id: filterCat,
         supplier_id: filterSup,
         status: filterStatus,
-    }), [search, filterCat, filterSup, filterStatus])
+        resource_type: filterType || undefined,
+    }), [search, filterCat, filterSup, filterStatus, filterType])
 
     const { resources, loading, error, createResource, updateResource, deleteResource } = useResources(filters)
     const categories = useCategories()
@@ -129,6 +131,26 @@ export default function ResourceCatalog() {
                     )}
                 </div>
 
+                {/* Type filter pill group */}
+                <div className="rc-type-pill-group">
+                    {[
+                        { key: '', label: 'All', Icon: null },
+                        { key: 'Material', label: 'Material', Icon: Package },
+                        { key: 'Labor', label: 'Labor', Icon: HardHat },
+                        { key: 'Equipment', label: 'Equipment', Icon: Wrench },
+                        { key: 'Other', label: 'Other', Icon: MoreHorizontal },
+                    ].map(({ key, label, Icon }) => (
+                        <button
+                            key={key}
+                            className={`rc-type-pill ${filterType === key ? `active-${label || 'All'}` : ''}`}
+                            onClick={() => setFilterType(key)}
+                        >
+                            {Icon && <Icon size={12} strokeWidth={1.5} />}
+                            {label}
+                        </button>
+                    ))}
+                </div>
+
                 <button
                     className={`rc-filter-btn ${showFilters ? 'active' : ''}`}
                     onClick={() => setShowFilters(s => !s)}
@@ -158,7 +180,6 @@ export default function ResourceCatalog() {
                     </button>
                 </div>
             </div>
-
             {/* ── Filter panel ── */}
             {showFilters && (
                 <div className="rc-filter-panel">

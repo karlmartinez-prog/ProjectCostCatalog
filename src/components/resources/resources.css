@@ -920,3 +920,185 @@
     color: #c9a84c;
     background: rgba(201, 168, 76, 0.06);
 }
+
+/* ── Resource type picker ───────────────────────────── */
+.rm-type-picker {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.rm-type-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 14px;
+    border: 1px solid #e0ddd5;
+    border-radius: 8px;
+    background: #fff;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    color: #4a4844;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.rm-type-btn:hover {
+    background: #f4f3ef;
+    border-color: #ccc9c0;
+}
+
+/* ── Resource type badges ───────────────────────────── */
+.rc-type-badge-Material {
+    background: #e8f0fe;
+    color: #1a56c4;
+}
+
+.rc-type-badge-Labor {
+    background: rgba(201, 168, 76, 0.12);
+    color: #8a6800;
+}
+
+.rc-type-badge-Equipment {
+    background: #e6f4ea;
+    color: #2d7a3a;
+}
+
+.rc-type-badge-Other {
+    background: #f4f3ef;
+    color: #6b6864;
+}
+
+/* ── Type filter pill group (toolbar-inline) ────────── */
+.rc-type-pill-group {
+    display: flex;
+    background: #fff;
+    border: 1px solid #e0ddd5;
+    border-radius: 8px;
+    overflow: hidden;
+    flex-shrink: 0;
+}
+
+.rc-type-pill {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 8px 11px;
+    background: none;
+    border: none;
+    border-right: 1px solid #e0ddd5;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    color: #7a7872;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.12s, color 0.12s;
+}
+
+.rc-type-pill:last-child {
+    border-right: none;
+}
+
+.rc-type-pill:hover {
+    background: #f4f3ef;
+    color: #1a1917;
+}
+
+/* Active states — each type has its own accent */
+.rc-type-pill.active-All {
+    background: #1a1917;
+    color: #f0ede6;
+}
+
+.rc-type-pill.active-Material {
+    background: #e8f0fe;
+    color: #1a56c4;
+    border-color: transparent;
+}
+
+.rc-type-pill.active-Labor {
+    background: rgba(201, 168, 76, 0.12);
+    color: #8a6800;
+    border-color: transparent;
+}
+
+.rc-type-pill.active-Equipment {
+    background: #e6f4ea;
+    color: #2d7a3a;
+    border-color: transparent;
+}
+
+.rc-type-pill.active-Other {
+    background: #f4f3ef;
+    color: #4a4844;
+    border-color: transparent;
+}
+
+/* ── UnitComboField ─────────────────────────────────── */
+.ucf-select {
+    width: 100%;
+    padding: 9px 12px;
+    border: 1px solid #dedad0;
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 13.5px;
+    color: #1a1917;
+    background: #fff;
+    outline: none;
+    transition: border-color 0.15s;
+    box-sizing: border-box;
+    cursor: pointer;
+}
+
+.ucf-select:focus {
+    border-color: #c9a84c;
+}
+
+.ucf-custom-wrap {
+    display: flex;
+    align-items: center;
+    border: 1px solid #dedad0;
+    border-radius: 8px;
+    overflow: hidden;
+    transition: border-color 0.15s;
+    background: #fff;
+}
+
+.ucf-custom-wrap:focus-within {
+    border-color: #c9a84c;
+}
+
+.ucf-custom-input {
+    flex: 1;
+    padding: 9px 12px;
+    border: none;
+    background: none;
+    outline: none;
+    font-family: inherit;
+    font-size: 13.5px;
+    color: #1a1917;
+}
+
+.ucf-custom-input::placeholder {
+    color: #b8b5ae;
+}
+
+.ucf-switch-btn {
+    padding: 0 10px;
+    height: 100%;
+    background: #f9f8f5;
+    border: none;
+    border-left: 1px solid #e5e2d9;
+    color: #aaa89f;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    transition: background 0.12s, color 0.12s;
+}
+
+.ucf-switch-btn:hover {
+    background: #f0ede8;
+    color: #4a4844;
+}

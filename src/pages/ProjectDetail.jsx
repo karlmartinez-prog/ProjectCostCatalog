@@ -3,13 +3,14 @@ import { useParams, useNavigate } from 'react-router-dom'
 import {
     ArrowLeft, Pencil, Trash2, Calendar, DollarSign,
     Package, TrendingUp, AlertTriangle, Clock, CheckCircle2,
-    XCircle, CircleDot, X
+    XCircle, CircleDot, X, HardHat
 } from 'lucide-react'
 import { useProjectDetail } from '../hooks/useProjects'
 import { useProjects } from '../hooks/useProjects'
 import { useInflationRatesReadonly } from '../hooks/useResources'
 import { adjustedLineItemCost } from '../services/inflationEngine'
 import ProjectModal from '../components/projects/ProjectModal'
+import ProjectLaborTab from '../components/projects/ProjectLaborTab'
 import '../components/projects/projects.css'
 
 const STATUS_CONFIG = {
@@ -41,14 +42,55 @@ function getDuration(start, end) {
 
 function TimelineBar({ start, end, status }) {
     if (!start) return null
+
     const startDate = new Date(start)
-    const endDate = end ? new Date(end) : new Date()
+    const endDate = end ? new Date(end) : null
     const now = new Date()
-    const total = endDate - startDate
-    if (total <= 0) return null
-    const elapsed = Math.min(now - startDate, total)
-    const pct = Math.max(0, Math.min(100, (elapsed / total) * 100))
     const color = STATUS_CONFIG[status]?.color || '#aaa89f'
+
+    // No end date — show open-ended bar with time elapsed since start
+    if (!endDate) {
+        const daysElapsed = Math.floor((now - startDate) / 86400000)
+        return (
+            <div className="pj-timeline-bar-wrap">
+                <div className="pj-timeline-bar-track">
+                    <div className="pj-timeline-bar-fill" style={{ width: '40%', background: color, opacity: 0.5 }} />
+                </div>
+                <div className="pj-timeline-bar-labels">
+                    <span>{startDate.toLocaleDateString('en-PH', { month: 'short', year: 'numeric' })}</span>
+                    <span style={{ color: '#aaa89f' }}>{daysElapsed} days in · no end date set</span>
+                    <span style={{ color: '#aaa89f' }}>ongoing</span>
+                </div>
+            </div>
+        )
+    }
+
+    const total = endDate - startDate
+    const elapsed = Math.min(Math.max(now - startDate, 0), total)
+    const pct = total > 0 ? Math.round((elapsed / total) * 100) : 100
+
+    // Same start and end date — just show a note
+    if (total <= 0) {
+        return (
+            <div className="pj-timeline-bar-wrap">
+                <div className="pj-timeline-bar-track">
+                    <div className="pj-timeline-bar-fill" style={{ width: '100%', background: color }} />
+                </div>
+                <div className="pj-timeline-bar-labels">
+                    <span>{startDate.toLocaleDateString('en-PH', { month: 'short', year: 'numeric' })}</span>
+                    <span style={{ color: '#aaa89f' }}>Start and end date are the same</span>
+                </div>
+            </div>
+        )
+    }
+
+    const totalDays = Math.round(total / 86400000)
+    const daysLeft = Math.max(0, Math.round((endDate - now) / 86400000))
+    const isOver = now > endDate
+
+    const midLabel = isOver
+        ? `Completed · ${totalDays}d total`
+        : `${pct}% elapsed · ${daysLeft}d remaining`
 
     return (
         <div className="pj-timeline-bar-wrap">
@@ -59,9 +101,9 @@ function TimelineBar({ start, end, status }) {
                 />
             </div>
             <div className="pj-timeline-bar-labels">
-                <span>{new Date(start).toLocaleDateString('en-PH', { month: 'short', year: 'numeric' })}</span>
-                <span>{pct.toFixed(0)}% elapsed</span>
-                {end && <span>{new Date(end).toLocaleDateString('en-PH', { month: 'short', year: 'numeric' })}</span>}
+                <span>{startDate.toLocaleDateString('en-PH', { month: 'short', year: 'numeric' })}</span>
+                <span style={{ color: isOver ? color : undefined }}>{midLabel}</span>
+                <span>{endDate.toLocaleDateString('en-PH', { month: 'short', year: 'numeric' })}</span>
             </div>
         </div>
     )
@@ -78,6 +120,7 @@ export default function ProjectDetail() {
     const [deleteLoading, setDeleteLoading] = useState(false)
     const [toast, setToast] = useState(null)
     const [inflationOn, setInflationOn] = useState(false)
+    const [activeTab, setActiveTab] = useState('costs') // 'costs' | 'labor'
 
     const inflationRates = useInflationRatesReadonly()
 
@@ -126,22 +169,54 @@ export default function ProjectDetail() {
         ? new Date(project.start_date).getFullYear()
         : new Date(project.created_at).getFullYear()
 
-    // Per-line YoY compounding: procured_at year (or project base year) → today
+    // Per-line adjusted costs + labor day-based total
     function getAdjustedLineCost(item) {
         if (!inflationOn) return item.unit_cost_snapshot
         return adjustedLineItemCost(item, inflationRates, currentYear, projectBaseYear)
     }
 
-    // Cost breakdown — use original or adjusted depending on toggle
-    const displayItems = lineItems.map(item => ({
-        ...item,
-        display_unit_cost: getAdjustedLineCost(item),
-        display_total: getAdjustedLineCost(item) * item.quantity,
-    }))
+    const displayItems = lineItems.map(item => {
+        const adjUnitCost = getAdjustedLineCost(item)
+        const isLabor = item.resources?.resource_type === 'Labor'
+
+        // Resolve working days: use stored value, or compute from project dates
+        let workingDays = item.working_days || 0
+        if (isLabor && !workingDays && project.start_date && project.end_date) {
+            const mode = project.working_days_mode || 'working_days'
+            if (mode === 'working_days') {
+                // Import countWorkingDays inline to avoid circular deps
+                const start = new Date(project.start_date)
+                const end = new Date(project.end_date)
+                let count = 0
+                const cur = new Date(start)
+                while (cur <= end) {
+                    const day = cur.getDay()
+                    if (day !== 0 && day !== 6) count++
+                    cur.setDate(cur.getDate() + 1)
+                }
+                workingDays = count
+            } else {
+                const diff = new Date(project.end_date) - new Date(project.start_date)
+                workingDays = Math.max(0, Math.round(diff / 86400000) + 1)
+            }
+        }
+
+        const displayTotal = isLabor
+            ? adjUnitCost * item.quantity * workingDays
+            : adjUnitCost * item.quantity
+
+        return {
+            ...item,
+            display_unit_cost: adjUnitCost,
+            display_total: displayTotal,
+            working_days: workingDays,  // resolved value
+        }
+    })
 
     const capexTotal = displayItems.filter(i => i.capex_opex === 'CAPEX').reduce((s, i) => s + i.display_total, 0)
     const opexTotal = displayItems.filter(i => i.capex_opex === 'OPEX').reduce((s, i) => s + i.display_total, 0)
     const otherTotal = displayItems.filter(i => !i.capex_opex).reduce((s, i) => s + i.display_total, 0)
+    const laborTotal = displayItems.filter(i => i.resources?.resource_type === 'Labor').reduce((s, i) => s + i.display_total, 0)
     const grandTotal = displayItems.reduce((s, i) => s + i.display_total, 0)
 
     return (
@@ -210,6 +285,16 @@ export default function ProjectDetail() {
                         <div className="pjd-stat-label">Duration</div>
                     </div>
                 </div>
+                {laborTotal > 0 && <>
+                    <div className="pjd-stat-divider" />
+                    <div className="pjd-stat">
+                        <HardHat size={16} strokeWidth={1.5} />
+                        <div>
+                            <div className="pjd-stat-value">{formatCost(laborTotal, project.currency)}</div>
+                            <div className="pjd-stat-label">Labor</div>
+                        </div>
+                    </div>
+                </>}
                 {(capexTotal > 0 || opexTotal > 0) && <>
                     <div className="pjd-stat-divider" />
                     <div className="pjd-stat">
@@ -230,239 +315,281 @@ export default function ProjectDetail() {
                 </>}
             </div>
 
-            <div className="pjd-body">
-                {/* ── Left column ── */}
-                <div className="pjd-left">
+            {/* ── Tab strip ── */}
+            <div className="pjd-tabs">
+                <button
+                    className={`pjd-tab ${activeTab === 'costs' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('costs')}
+                >
+                    <DollarSign size={14} strokeWidth={1.5} /> Cost breakdown
+                </button>
+                <button
+                    className={`pjd-tab ${activeTab === 'labor' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('labor')}
+                >
+                    <HardHat size={14} strokeWidth={1.5} /> Labor
+                </button>
+            </div>
 
-                    {/* Timeline card */}
-                    <div className="card pjd-section">
-                        <div className="pjd-section-title">
-                            <Calendar size={15} strokeWidth={1.5} /> Timeline
-                        </div>
-                        <div className="pjd-timeline-dates">
-                            <div className="pjd-timeline-date">
-                                <span className="pjd-date-label">Start date</span>
-                                <span className="pjd-date-value">{formatDate(project.start_date)}</span>
+            {/* ── Labor tab ── */}
+            {activeTab === 'labor' && (
+                <ProjectLaborTab project={project} />
+            )}
+
+            {/* ── Costs tab ── */}
+            {activeTab === 'costs' && (
+                <div className="pjd-body">
+                    {/* ── Left column ── */}
+                    <div className="pjd-left">
+
+                        {/* Timeline card */}
+                        <div className="card pjd-section">
+                            <div className="pjd-section-title">
+                                <Calendar size={15} strokeWidth={1.5} /> Timeline
                             </div>
-                            <div className="pjd-timeline-arrow">→</div>
-                            <div className="pjd-timeline-date">
-                                <span className="pjd-date-label">End date</span>
-                                <span className="pjd-date-value">{formatDate(project.end_date)}</span>
-                            </div>
-                            {getDuration(project.start_date, project.end_date) && (
-                                <div className="pjd-timeline-date" style={{ marginLeft: 'auto' }}>
-                                    <span className="pjd-date-label">Duration</span>
-                                    <span className="pjd-date-value" style={{ color: statusCfg.color }}>
-                                        {getDuration(project.start_date, project.end_date)}
-                                    </span>
+                            <div className="pjd-timeline-dates">
+                                <div className="pjd-timeline-date">
+                                    <span className="pjd-date-label">Start date</span>
+                                    <span className="pjd-date-value">{formatDate(project.start_date)}</span>
                                 </div>
-                            )}
-                        </div>
-                        <TimelineBar start={project.start_date} end={project.end_date} status={project.status} />
-                    </div>
-
-                    {/* Cost breakdown card */}
-                    <div className="card pjd-section">
-                        <div className="pjd-section-title" style={{ justifyContent: 'space-between' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                                <DollarSign size={15} strokeWidth={1.5} /> Cost breakdown
+                                <div className="pjd-timeline-arrow">→</div>
+                                <div className="pjd-timeline-date">
+                                    <span className="pjd-date-label">End date</span>
+                                    <span className="pjd-date-value">{formatDate(project.end_date)}</span>
+                                </div>
+                                {getDuration(project.start_date, project.end_date) && (
+                                    <div className="pjd-timeline-date" style={{ marginLeft: 'auto' }}>
+                                        <span className="pjd-date-label">Duration</span>
+                                        <span className="pjd-date-value" style={{ color: statusCfg.color }}>
+                                            {getDuration(project.start_date, project.end_date)}
+                                        </span>
+                                    </div>
+                                )}
                             </div>
-                            {inflationOn && (
-                                <span className="badge rc-inflation-badge" style={{ fontSize: 11 }}>
-                                    inflation-adjusted · {projectBaseYear} → {currentYear}
-                                </span>
-                            )}
+                            <TimelineBar start={project.start_date} end={project.end_date} status={project.status} />
                         </div>
-                        {lineItems.length === 0 ? (
-                            <p style={{ color: '#aaa89f', fontSize: 13.5 }}>No resources added to this project.</p>
-                        ) : (
-                            <>
-                                <table className="rc-table pjd-resource-table">
-                                    <thead>
-                                        <tr>
-                                            <th>Resource</th>
-                                            <th>Type</th>
-                                            <th style={{ textAlign: 'right' }}>Unit cost</th>
-                                            <th style={{ textAlign: 'center' }}>Qty</th>
-                                            <th style={{ textAlign: 'right' }}>Subtotal</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {displayItems.map(item => {
-                                            const isAdjusted = inflationOn && item.display_unit_cost !== item.unit_cost_snapshot
-                                            return (
-                                                <tr key={item.id}>
-                                                    <td>
-                                                        <div className="rt-name-cell">
-                                                            {item.resources?.image_url
-                                                                ? <img src={item.resources.image_url} alt="" className="rt-thumb" />
-                                                                : <div className="rt-thumb-empty" />
-                                                            }
-                                                            <div>
-                                                                <div style={{ fontWeight: 500, fontSize: 13.5 }}>
-                                                                    {item.resources?.name || <span style={{ color: '#aaa89f' }}>Custom resource</span>}
+
+                        {/* Cost breakdown card */}
+                        <div className="card pjd-section">
+                            <div className="pjd-section-title" style={{ justifyContent: 'space-between' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                                    <DollarSign size={15} strokeWidth={1.5} /> Cost breakdown
+                                </div>
+                                {inflationOn && (
+                                    <span className="badge rc-inflation-badge" style={{ fontSize: 11 }}>
+                                        inflation-adjusted · {projectBaseYear} → {currentYear}
+                                    </span>
+                                )}
+                            </div>
+                            {lineItems.length === 0 ? (
+                                <p style={{ color: '#aaa89f', fontSize: 13.5 }}>No resources added to this project.</p>
+                            ) : (
+                                <>
+                                    <table className="rc-table pjd-resource-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Resource</th>
+                                                <th>Type</th>
+                                                <th style={{ textAlign: 'right' }}>Unit cost</th>
+                                                <th style={{ textAlign: 'center' }}>Qty</th>
+                                                <th style={{ textAlign: 'right' }}>Subtotal</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {displayItems.map(item => {
+                                                const isAdjusted = inflationOn && item.display_unit_cost !== item.unit_cost_snapshot
+                                                return (
+                                                    <tr key={item.id}>
+                                                        <td>
+                                                            <div className="rt-name-cell">
+                                                                {item.resources?.image_url
+                                                                    ? <img src={item.resources.image_url} alt="" className="rt-thumb" />
+                                                                    : <div className="rt-thumb-empty" />
+                                                                }
+                                                                <div>
+                                                                    <div style={{ fontWeight: 500, fontSize: 13.5 }}>
+                                                                        {item.resources?.name || <span style={{ color: '#aaa89f' }}>Custom resource</span>}
+                                                                    </div>
+                                                                    {item.resources?.categories && (
+                                                                        <span className={`badge ${item.resources.categories.type === 'CAPEX' ? 'badge-blue' : 'badge-purple'}`}
+                                                                            style={{ fontSize: 10, marginTop: 3 }}>
+                                                                            {item.resources.categories.name}
+                                                                        </span>
+                                                                    )}
                                                                 </div>
-                                                                {item.resources?.categories && (
-                                                                    <span className={`badge ${item.resources.categories.type === 'CAPEX' ? 'badge-blue' : 'badge-purple'}`}
-                                                                        style={{ fontSize: 10, marginTop: 3 }}>
-                                                                        {item.resources.categories.name}
-                                                                    </span>
+                                                            </div>
+                                                        </td>
+                                                        <td>
+                                                            {item.capex_opex
+                                                                ? <span className={`badge ${item.capex_opex === 'CAPEX' ? 'badge-blue' : 'badge-purple'}`}>{item.capex_opex}</span>
+                                                                : <span className="badge badge-gray">—</span>
+                                                            }
+                                                        </td>
+                                                        <td style={{ textAlign: 'right' }}>
+                                                            <div style={{ fontWeight: 500 }}>
+                                                                {formatCost(item.display_unit_cost, project.currency)}
+                                                                {item.resources?.unit && (
+                                                                    <span style={{ color: '#aaa89f', fontWeight: 400, fontSize: 11 }}> {item.resources.unit}</span>
                                                                 )}
                                                             </div>
-                                                        </div>
-                                                    </td>
-                                                    <td>
-                                                        {item.capex_opex
-                                                            ? <span className={`badge ${item.capex_opex === 'CAPEX' ? 'badge-blue' : 'badge-purple'}`}>{item.capex_opex}</span>
-                                                            : <span className="badge badge-gray">—</span>
-                                                        }
-                                                    </td>
-                                                    <td style={{ textAlign: 'right' }}>
-                                                        <div style={{ fontWeight: 500 }}>
-                                                            {formatCost(item.display_unit_cost, project.currency)}
-                                                            {item.resources?.unit && (
-                                                                <span style={{ color: '#aaa89f', fontWeight: 400, fontSize: 11 }}> {item.resources.unit}</span>
+                                                            {isAdjusted && (
+                                                                <div style={{ fontSize: 11, color: '#aaa89f', textDecoration: 'line-through', textDecorationColor: '#c9a84c' }}>
+                                                                    {formatCost(item.unit_cost_snapshot, project.currency)}
+                                                                </div>
                                                             )}
-                                                        </div>
-                                                        {isAdjusted && (
-                                                            <div style={{ fontSize: 11, color: '#aaa89f', textDecoration: 'line-through', textDecorationColor: '#c9a84c' }}>
-                                                                {formatCost(item.unit_cost_snapshot, project.currency)}
-                                                            </div>
-                                                        )}
-                                                    </td>
-                                                    <td style={{ textAlign: 'center', color: '#7a7872' }}>{item.quantity}</td>
-                                                    <td style={{ textAlign: 'right', fontWeight: 650, color: '#1a1917' }}>
-                                                        {formatCost(item.display_total, project.currency)}
-                                                    </td>
-                                                </tr>
-                                            )
-                                        })}
-                                    </tbody>
-                                </table>
+                                                        </td>
+                                                        <td style={{ textAlign: 'center', color: '#7a7872' }}>
+                                                            {item.resources?.resource_type === 'Labor' ? (
+                                                                <div>
+                                                                    <div style={{ fontWeight: 500, color: '#1a1917' }}>{item.quantity} workers</div>
+                                                                    {item.working_days && (
+                                                                        <div style={{ fontSize: 11, color: '#c9a84c' }}>× {item.working_days} days</div>
+                                                                    )}
+                                                                </div>
+                                                            ) : item.quantity}
+                                                        </td>
+                                                        <td style={{ textAlign: 'right', fontWeight: 650, color: '#1a1917' }}>
+                                                            {formatCost(item.display_total, project.currency)}
+                                                        </td>
+                                                    </tr>
+                                                )
+                                            })}
+                                        </tbody>
+                                    </table>
 
-                                {/* Totals summary */}
-                                <div className="pjd-cost-summary">
+                                    {/* Totals summary */}
+                                    <div className="pjd-cost-summary">
+                                        {laborTotal > 0 && (
+                                            <div className="pjd-cost-row">
+                                                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                                    <HardHat size={13} strokeWidth={1.5} style={{ color: '#c9a84c' }} />
+                                                    Labor subtotal
+                                                </span>
+                                                <span>{formatCost(laborTotal, project.currency)}</span>
+                                            </div>
+                                        )}
+                                        {capexTotal > 0 && (
+                                            <div className="pjd-cost-row">
+                                                <span><span className="badge badge-blue" style={{ marginRight: 8 }}>CAPEX</span> subtotal</span>
+                                                <span>{formatCost(capexTotal, project.currency)}</span>
+                                            </div>
+                                        )}
+                                        {opexTotal > 0 && (
+                                            <div className="pjd-cost-row">
+                                                <span><span className="badge badge-purple" style={{ marginRight: 8 }}>OPEX</span> subtotal</span>
+                                                <span>{formatCost(opexTotal, project.currency)}</span>
+                                            </div>
+                                        )}
+                                        {otherTotal > 0 && (
+                                            <div className="pjd-cost-row">
+                                                <span><span className="badge badge-gray" style={{ marginRight: 8 }}>Untagged</span> subtotal</span>
+                                                <span>{formatCost(otherTotal, project.currency)}</span>
+                                            </div>
+                                        )}
+                                        <div className="pjd-cost-row pjd-cost-total">
+                                            <span>
+                                                {inflationOn
+                                                    ? `Adjusted total (${projectBaseYear} → ${currentYear})`
+                                                    : 'Grand total'}
+                                            </span>
+                                            <span>{formatCost(grandTotal, project.currency)}</span>
+                                        </div>
+                                        {inflationOn && project.total_cost !== grandTotal && (
+                                            <div className="pjd-cost-row" style={{ fontSize: 12, color: '#aaa89f' }}>
+                                                <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                                                    <TrendingUp size={11} style={{ color: '#c9a84c' }} />
+                                                    Original total ({projectBaseYear})
+                                                </span>
+                                                <span style={{ textDecoration: 'line-through', textDecorationColor: '#c9a84c' }}>
+                                                    {formatCost(project.total_cost, project.currency)}
+                                                </span>
+                                            </div>
+                                        )}
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* ── Right column ── */}
+                    <div className="pjd-right">
+                        <div className="card pjd-section">
+                            <div className="pjd-section-title">
+                                <Package size={15} strokeWidth={1.5} /> Project info
+                            </div>
+                            <div className="pjd-info-rows">
+                                <div className="pjd-info-row">
+                                    <span className="pjd-info-label">Status</span>
+                                    <span className={`badge ${statusCfg.badge}`}>{project.status}</span>
+                                </div>
+                                <div className="pjd-info-row">
+                                    <span className="pjd-info-label">Currency</span>
+                                    <span className="pjd-info-value">{project.currency}</span>
+                                </div>
+                                <div className="pjd-info-row">
+                                    <span className="pjd-info-label">Resources</span>
+                                    <span className="pjd-info-value">{lineItems.length} items</span>
+                                </div>
+                                <div className="pjd-info-row">
+                                    <span className="pjd-info-label">Created</span>
+                                    <span className="pjd-info-value">{formatDate(project.created_at)}</span>
+                                </div>
+                                {project.updated_at && (
+                                    <div className="pjd-info-row">
+                                        <span className="pjd-info-label">Last updated</span>
+                                        <span className="pjd-info-value">{formatDate(project.updated_at)}</span>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* CAPEX / OPEX donut-ish bar */}
+                        {grandTotal > 0 && (capexTotal > 0 || opexTotal > 0) && (
+                            <div className="card pjd-section">
+                                <div className="pjd-section-title">
+                                    <TrendingUp size={15} strokeWidth={1.5} /> CAPEX vs OPEX
+                                </div>
+                                <div className="pjd-split-bar">
                                     {capexTotal > 0 && (
-                                        <div className="pjd-cost-row">
-                                            <span><span className="badge badge-blue" style={{ marginRight: 8 }}>CAPEX</span> subtotal</span>
-                                            <span>{formatCost(capexTotal, project.currency)}</span>
+                                        <div
+                                            className="pjd-split-capex"
+                                            style={{ width: `${(capexTotal / grandTotal) * 100}%` }}
+                                            title={`CAPEX: ${formatCost(capexTotal, project.currency)}`}
+                                        />
+                                    )}
+                                    {opexTotal > 0 && (
+                                        <div
+                                            className="pjd-split-opex"
+                                            style={{ width: `${(opexTotal / grandTotal) * 100}%` }}
+                                            title={`OPEX: ${formatCost(opexTotal, project.currency)}`}
+                                        />
+                                    )}
+                                </div>
+                                <div className="pjd-split-legend">
+                                    {capexTotal > 0 && (
+                                        <div className="pjd-split-legend-item">
+                                            <span className="pjd-split-dot" style={{ background: '#2563eb' }} />
+                                            <span>CAPEX {((capexTotal / grandTotal) * 100).toFixed(1)}%</span>
                                         </div>
                                     )}
                                     {opexTotal > 0 && (
-                                        <div className="pjd-cost-row">
-                                            <span><span className="badge badge-purple" style={{ marginRight: 8 }}>OPEX</span> subtotal</span>
-                                            <span>{formatCost(opexTotal, project.currency)}</span>
+                                        <div className="pjd-split-legend-item">
+                                            <span className="pjd-split-dot" style={{ background: '#8b5cf6' }} />
+                                            <span>OPEX {((opexTotal / grandTotal) * 100).toFixed(1)}%</span>
                                         </div>
                                     )}
                                     {otherTotal > 0 && (
-                                        <div className="pjd-cost-row">
-                                            <span><span className="badge badge-gray" style={{ marginRight: 8 }}>Untagged</span> subtotal</span>
-                                            <span>{formatCost(otherTotal, project.currency)}</span>
-                                        </div>
-                                    )}
-                                    <div className="pjd-cost-row pjd-cost-total">
-                                        <span>
-                                            {inflationOn
-                                                ? `Adjusted total (${projectBaseYear} → ${currentYear})`
-                                                : 'Grand total'}
-                                        </span>
-                                        <span>{formatCost(grandTotal, project.currency)}</span>
-                                    </div>
-                                    {inflationOn && project.total_cost !== grandTotal && (
-                                        <div className="pjd-cost-row" style={{ fontSize: 12, color: '#aaa89f' }}>
-                                            <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                                                <TrendingUp size={11} style={{ color: '#c9a84c' }} />
-                                                Original total ({projectBaseYear})
-                                            </span>
-                                            <span style={{ textDecoration: 'line-through', textDecorationColor: '#c9a84c' }}>
-                                                {formatCost(project.total_cost, project.currency)}
-                                            </span>
+                                        <div className="pjd-split-legend-item">
+                                            <span className="pjd-split-dot" style={{ background: '#e5e2d9' }} />
+                                            <span>Untagged {((otherTotal / grandTotal) * 100).toFixed(1)}%</span>
                                         </div>
                                     )}
                                 </div>
-                            </>
+                            </div>
                         )}
                     </div>
                 </div>
-
-                {/* ── Right column ── */}
-                <div className="pjd-right">
-                    <div className="card pjd-section">
-                        <div className="pjd-section-title">
-                            <Package size={15} strokeWidth={1.5} /> Project info
-                        </div>
-                        <div className="pjd-info-rows">
-                            <div className="pjd-info-row">
-                                <span className="pjd-info-label">Status</span>
-                                <span className={`badge ${statusCfg.badge}`}>{project.status}</span>
-                            </div>
-                            <div className="pjd-info-row">
-                                <span className="pjd-info-label">Currency</span>
-                                <span className="pjd-info-value">{project.currency}</span>
-                            </div>
-                            <div className="pjd-info-row">
-                                <span className="pjd-info-label">Resources</span>
-                                <span className="pjd-info-value">{lineItems.length} items</span>
-                            </div>
-                            <div className="pjd-info-row">
-                                <span className="pjd-info-label">Created</span>
-                                <span className="pjd-info-value">{formatDate(project.created_at)}</span>
-                            </div>
-                            {project.updated_at && (
-                                <div className="pjd-info-row">
-                                    <span className="pjd-info-label">Last updated</span>
-                                    <span className="pjd-info-value">{formatDate(project.updated_at)}</span>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* CAPEX / OPEX donut-ish bar */}
-                    {grandTotal > 0 && (capexTotal > 0 || opexTotal > 0) && (
-                        <div className="card pjd-section">
-                            <div className="pjd-section-title">
-                                <TrendingUp size={15} strokeWidth={1.5} /> CAPEX vs OPEX
-                            </div>
-                            <div className="pjd-split-bar">
-                                {capexTotal > 0 && (
-                                    <div
-                                        className="pjd-split-capex"
-                                        style={{ width: `${(capexTotal / grandTotal) * 100}%` }}
-                                        title={`CAPEX: ${formatCost(capexTotal, project.currency)}`}
-                                    />
-                                )}
-                                {opexTotal > 0 && (
-                                    <div
-                                        className="pjd-split-opex"
-                                        style={{ width: `${(opexTotal / grandTotal) * 100}%` }}
-                                        title={`OPEX: ${formatCost(opexTotal, project.currency)}`}
-                                    />
-                                )}
-                            </div>
-                            <div className="pjd-split-legend">
-                                {capexTotal > 0 && (
-                                    <div className="pjd-split-legend-item">
-                                        <span className="pjd-split-dot" style={{ background: '#2563eb' }} />
-                                        <span>CAPEX {((capexTotal / grandTotal) * 100).toFixed(1)}%</span>
-                                    </div>
-                                )}
-                                {opexTotal > 0 && (
-                                    <div className="pjd-split-legend-item">
-                                        <span className="pjd-split-dot" style={{ background: '#8b5cf6' }} />
-                                        <span>OPEX {((opexTotal / grandTotal) * 100).toFixed(1)}%</span>
-                                    </div>
-                                )}
-                                {otherTotal > 0 && (
-                                    <div className="pjd-split-legend-item">
-                                        <span className="pjd-split-dot" style={{ background: '#e5e2d9' }} />
-                                        <span>Untagged {((otherTotal / grandTotal) * 100).toFixed(1)}%</span>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    )}
-                </div>
-            </div>
+            )} {/* end costs tab */}
 
             {/* ── Edit modal ── */}
             <ProjectModal

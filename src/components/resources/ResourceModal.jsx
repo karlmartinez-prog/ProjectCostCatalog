@@ -1,12 +1,36 @@
 import { useState, useEffect } from 'react'
-import { X, Upload } from 'lucide-react'
+import { X, Upload, HardHat, Package, Wrench, MoreHorizontal } from 'lucide-react'
 import { supabase } from '../../lib/supabaseClient'
+import { BILLING_TYPES } from '../../services/laborEngine'
+import UnitComboField from '../ui/UnitComboField'
 
 const STATUSES = ['active', 'pending', 'discontinued']
+const RESOURCE_TYPES = ['Material', 'Labor', 'Equipment', 'Other']
+const TRADES = [
+    'Carpenter', 'Mason', 'Electrician', 'Plumber', 'Welder',
+    'Painter', 'Laborer', 'Foreman', 'Engineer', 'Surveyor',
+    'Operator', 'Tinsmith', 'Tile Setter', 'Steel Worker', 'Other',
+]
+
+const TYPE_ICONS = {
+    Material: Package,
+    Labor: HardHat,
+    Equipment: Wrench,
+    Other: MoreHorizontal,
+}
+
+const TYPE_COLORS = {
+    Material: { bg: '#e8f0fe', color: '#1a56c4' },
+    Labor: { bg: 'rgba(201,168,76,0.12)', color: '#8a6800' },
+    Equipment: { bg: '#e6f4ea', color: '#2d7a3a' },
+    Other: { bg: '#f4f3ef', color: '#6b6864' },
+}
+
 const EMPTY = {
-    name: '', unit_cost: '', currency: 'PHP', unit: '',
-    status: 'active', quantity: '', image_url: '',
-    category_id: '', supplier_id: '', procured_at: ''
+    name: '', resource_type: 'Material', unit_cost: '', currency: 'PHP',
+    unit: '', status: 'active', quantity: '', image_url: '',
+    category_id: '', supplier_id: '', procured_at: '', trade: '', notes: '',
+    billing_type: 'per_use',
 }
 
 export default function ResourceModal({ open, onClose, onSave, resource, categories, suppliers }) {
@@ -19,6 +43,7 @@ export default function ResourceModal({ open, onClose, onSave, resource, categor
         if (resource) {
             setForm({
                 name: resource.name || '',
+                resource_type: resource.resource_type || 'Material',
                 unit_cost: resource.unit_cost || '',
                 currency: resource.currency || 'PHP',
                 unit: resource.unit || '',
@@ -28,6 +53,9 @@ export default function ResourceModal({ open, onClose, onSave, resource, categor
                 category_id: resource.category_id || '',
                 supplier_id: resource.supplier_id || '',
                 procured_at: resource.procured_at || '',
+                trade: resource.trade || '',
+                notes: resource.notes || '',
+                billing_type: resource.billing_type || 'per_use',
             })
         } else {
             setForm(EMPTY)
@@ -39,6 +67,17 @@ export default function ResourceModal({ open, onClose, onSave, resource, categor
         setForm(prev => ({ ...prev, [field]: value }))
     }
 
+    // When type changes, reset type-specific fields
+    function setType(type) {
+        setForm(prev => ({
+            ...prev,
+            resource_type: type,
+            unit: type === 'Labor' ? 'day' : prev.unit,
+        }))
+    }
+
+    const isLabor = form.resource_type === 'Labor'
+
     async function handleImageUpload(e) {
         const file = e.target.files[0]
         if (!file) return
@@ -46,8 +85,7 @@ export default function ResourceModal({ open, onClose, onSave, resource, categor
         const ext = file.name.split('.').pop()
         const path = `resources/${Date.now()}.${ext}`
         const { error: uploadError } = await supabase.storage
-            .from('resource-images')
-            .upload(path, file, { upsert: true })
+            .from('resource-images').upload(path, file, { upsert: true })
         if (uploadError) {
             setError('Image upload failed: ' + uploadError.message)
         } else {
@@ -71,6 +109,9 @@ export default function ResourceModal({ open, onClose, onSave, resource, categor
                 category_id: form.category_id || null,
                 supplier_id: form.supplier_id || null,
                 procured_at: form.procured_at || null,
+                trade: isLabor ? (form.trade || null) : null,
+                notes: form.notes || null,
+                billing_type: form.billing_type || 'per_use',
             }
             await onSave(payload)
             onClose()
@@ -86,12 +127,37 @@ export default function ResourceModal({ open, onClose, onSave, resource, categor
         <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
             <div className="modal-box">
                 <div className="modal-header">
-                    <h3>{resource ? 'Edit Resource' : 'Add Resource'}</h3>
+                    <h3>{resource ? 'Edit resource' : 'Add resource'}</h3>
                     <button className="modal-close" onClick={onClose}><X size={18} /></button>
                 </div>
 
                 <form onSubmit={handleSubmit} className="modal-form">
-                    {/* Image */}
+
+                    {/* ── Type selector ── */}
+                    <div className="mf-group">
+                        <label>Resource type</label>
+                        <div className="rm-type-picker">
+                            {RESOURCE_TYPES.map(t => {
+                                const Icon = TYPE_ICONS[t]
+                                const colors = TYPE_COLORS[t]
+                                const active = form.resource_type === t
+                                return (
+                                    <button
+                                        key={t}
+                                        type="button"
+                                        className="rm-type-btn"
+                                        style={active ? { background: colors.bg, borderColor: colors.color, color: colors.color } : {}}
+                                        onClick={() => setType(t)}
+                                    >
+                                        <Icon size={14} strokeWidth={1.5} />
+                                        {t}
+                                    </button>
+                                )
+                            })}
+                        </div>
+                    </div>
+
+                    {/* ── Image ── */}
                     <div className="modal-image-row">
                         <div className="modal-image-preview">
                             {form.image_url
@@ -113,10 +179,16 @@ export default function ResourceModal({ open, onClose, onSave, resource, categor
                         </div>
                     </div>
 
+                    {/* ── Name + status ── */}
                     <div className="modal-grid-2">
                         <div className="mf-group">
-                            <label>Resource name *</label>
-                            <input value={form.name} onChange={e => set('name', e.target.value)} placeholder="e.g. Portland Cement" required />
+                            <label>Name *</label>
+                            <input
+                                value={form.name}
+                                onChange={e => set('name', e.target.value)}
+                                placeholder={isLabor ? 'e.g. Journeyman Carpenter' : 'e.g. Portland Cement'}
+                                required autoFocus
+                            />
                         </div>
                         <div className="mf-group">
                             <label>Status</label>
@@ -126,11 +198,28 @@ export default function ResourceModal({ open, onClose, onSave, resource, categor
                         </div>
                     </div>
 
+                    {/* ── Labor-specific: trade ── */}
+                    {isLabor && (
+                        <div className="mf-group">
+                            <label>Trade</label>
+                            <select value={form.trade} onChange={e => set('trade', e.target.value)}>
+                                <option value="">— Select trade —</option>
+                                {TRADES.map(t => <option key={t} value={t}>{t}</option>)}
+                            </select>
+                        </div>
+                    )}
+
+                    {/* ── Cost fields ── */}
                     <div className="modal-grid-3">
                         <div className="mf-group">
-                            <label>Unit cost *</label>
-                            <input type="number" min="0" step="0.01" value={form.unit_cost}
-                                onChange={e => set('unit_cost', e.target.value)} placeholder="0.00" required />
+                            <label>{isLabor ? 'Salary' : 'Unit cost *'}</label>
+                            <input
+                                type="number" min="0" step="0.01"
+                                value={form.unit_cost}
+                                onChange={e => set('unit_cost', e.target.value)}
+                                placeholder="0.00"
+                                required
+                            />
                         </div>
                         <div className="mf-group">
                             <label>Currency</label>
@@ -140,23 +229,36 @@ export default function ResourceModal({ open, onClose, onSave, resource, categor
                         </div>
                         <div className="mf-group">
                             <label>Unit</label>
-                            <input value={form.unit} onChange={e => set('unit', e.target.value)} placeholder="per bag, per kg…" />
+                            <UnitComboField
+                                value={form.unit}
+                                onChange={(unit, billing_type) => {
+                                    setForm(prev => ({ ...prev, unit, billing_type }))
+                                }}
+                                placeholder={isLabor ? 'day' : 'e.g. per bag'}
+                            />
                         </div>
                     </div>
 
-                    <div className="modal-grid-2">
-                        <div className="mf-group">
-                            <label>Quantity in stock</label>
-                            <input type="number" min="0" value={form.quantity}
-                                onChange={e => set('quantity', e.target.value)} placeholder="0" />
+                    {/* ── Non-labor: quantity + procured date ── */}
+                    {!isLabor && (
+                        <div className="modal-grid-2">
+                            <div className="mf-group">
+                                <label>Quantity in stock</label>
+                                <input
+                                    type="number" min="0"
+                                    value={form.quantity}
+                                    onChange={e => set('quantity', e.target.value)}
+                                    placeholder="0"
+                                />
+                            </div>
+                            <div className="mf-group">
+                                <label>Date procured</label>
+                                <input type="date" value={form.procured_at} onChange={e => set('procured_at', e.target.value)} />
+                            </div>
                         </div>
-                        <div className="mf-group">
-                            <label>Date procured</label>
-                            <input type="date" value={form.procured_at}
-                                onChange={e => set('procured_at', e.target.value)} />
-                        </div>
-                    </div>
+                    )}
 
+                    {/* ── Category + supplier ── */}
                     <div className="modal-grid-2">
                         <div className="mf-group">
                             <label>Category</label>
@@ -177,6 +279,19 @@ export default function ResourceModal({ open, onClose, onSave, resource, categor
                             </select>
                         </div>
                     </div>
+
+                    {/* ── Notes (labor) ── */}
+                    {isLabor && (
+                        <div className="mf-group">
+                            <label>Notes <span style={{ color: '#aaa89f', fontWeight: 400 }}>(optional)</span></label>
+                            <textarea
+                                value={form.notes}
+                                onChange={e => set('notes', e.target.value)}
+                                placeholder="Skills, certifications, remarks…"
+                                rows={2}
+                            />
+                        </div>
+                    )}
 
                     {error && <div className="modal-error">{error}</div>}
 

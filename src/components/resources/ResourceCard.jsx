@@ -1,4 +1,4 @@
-import { Package, Pencil, Trash2, Eye, TrendingUp } from 'lucide-react'
+import { Package, Pencil, Trash2, Eye, TrendingUp, HardHat, Wrench, MoreHorizontal } from 'lucide-react'
 
 const STATUS_STYLE = {
     active: 'badge-green',
@@ -9,6 +9,13 @@ const STATUS_STYLE = {
 const CAPEX_STYLE = {
     CAPEX: 'badge-blue',
     OPEX: 'badge-purple',
+}
+
+const TYPE_ICONS = {
+    Labor: HardHat,
+    Equipment: Wrench,
+    Other: MoreHorizontal,
+    Material: Package,
 }
 
 export function formatPeso(amount, currency = 'PHP') {
@@ -29,10 +36,12 @@ export function timeAgo(date) {
 }
 
 export default function ResourceCard({ resource, onEdit, onDelete, onClick, selected, inflationOn, adjustedCost }) {
-    const { name, image_url, unit_cost, currency, unit, status, quantity, categories, suppliers, created_at, procured_at } = resource
+    const { name, image_url, unit_cost, currency, unit, status, quantity, categories, suppliers, created_at, procured_at, resource_type, trade } = resource
 
+    const isLabor = resource_type === 'Labor'
+    const TypeIcon = TYPE_ICONS[resource_type] || Package
+    const displayCost = (inflationOn && adjustedCost != null && adjustedCost !== unit_cost) ? adjustedCost : unit_cost
     const showAdjusted = inflationOn && adjustedCost != null && adjustedCost !== unit_cost
-    const displayCost = showAdjusted ? adjustedCost : unit_cost
 
     return (
         <div
@@ -43,7 +52,7 @@ export default function ResourceCard({ resource, onEdit, onDelete, onClick, sele
             <div className="rc-image">
                 {image_url
                     ? <img src={image_url} alt={name} />
-                    : <div className="rc-image-empty"><Package size={22} strokeWidth={1.5} /></div>
+                    : <div className="rc-image-empty"><TypeIcon size={22} strokeWidth={1.5} /></div>
                 }
             </div>
 
@@ -73,6 +82,12 @@ export default function ResourceCard({ resource, onEdit, onDelete, onClick, sele
                 )}
 
                 <div className="rc-meta">
+                    {/* Type badge */}
+                    <span className={`badge rc-type-badge-${resource_type || 'Material'}`}>
+                        <TypeIcon size={10} strokeWidth={2} style={{ marginRight: 3 }} />
+                        {resource_type || 'Material'}
+                    </span>
+
                     {categories && (
                         <span className={`badge ${CAPEX_STYLE[categories.type] || 'badge-gray'}`}>
                             {categories.name}
@@ -87,8 +102,10 @@ export default function ResourceCard({ resource, onEdit, onDelete, onClick, sele
                 </div>
 
                 <div className="rc-footer">
-                    <span className="rc-supplier">{suppliers?.name ?? 'No supplier'}</span>
-                    <span className="rc-detail">Qty: {quantity ?? 0}</span>
+                    <span className="rc-supplier">
+                        {isLabor && trade ? trade : (suppliers?.name ?? 'No supplier')}
+                    </span>
+                    {!isLabor && <span className="rc-detail">Qty: {quantity ?? 0}</span>}
                     {procured_at
                         ? <span className="rc-detail rc-procured" title="Date procured">
                             🗓 {new Date(procured_at).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}
