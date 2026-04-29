@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { X, Plus, Trash2, Search, Package, Tag, HardHat, Calendar } from 'lucide-react'
 import { supabase } from '../../lib/supabaseClient'
-import { countWorkingDays, BILLING_TYPES, resolveOpexDuration, opexCostLabel } from '../../services/laborEngine'
+import { countWorkingDays, resolveOpexDuration } from '../../services/laborEngine'
 import UnitComboField from '../ui/UnitComboField'
 
 const STATUSES = ['planned', 'ongoing', 'completed', 'cancelled']
@@ -23,9 +23,18 @@ function formatCost(amount, currency = 'PHP') {
 function computeDays(start, end, mode) {
     if (!start || !end) return 0
     if (mode === 'working_days') return countWorkingDays(start, end)
-    // Calendar days inclusive
     const diff = new Date(end) - new Date(start)
     return Math.max(0, Math.round(diff / 86400000) + 1)
+}
+
+// ── Resolve the duration multiplier from unit + days ─────
+// Works for BOTH labor and non-labor time-based units
+function resolveDurationFromUnit(unit, workingDays) {
+    const u = (unit || '').toLowerCase().trim()
+    if (u === 'per day' || u === 'day') return workingDays
+    if (u === 'per week' || u === 'week') return Math.ceil(workingDays / 5)
+    if (u === 'per month' || u === 'month') return Math.ceil(workingDays / 22)
+    return null // not time-based — use qty only
 }
 
 // ── Resource search dropdown ─────────────────────────────
@@ -40,7 +49,7 @@ function ResourcePicker({ onSelect }) {
         setLoading(true)
         const { data } = await supabase
             .from('resources')
-            .select('id, name, unit_cost, currency, unit, image_url, resource_type, trade, categories(id, name, type)')
+            .select('id, name, unit_cost, currency, unit, image_url, resource_type, trade, billing_type, categories(id, name, type)')
             .ilike('name', `%${q}%`)
             .eq('status', 'active')
             .limit(8)
@@ -154,6 +163,7 @@ export default function ProjectModal({ open, onClose, onSave, project, initialLi
                 category_name: li.resources?.categories?.name || li._category_name || '',
                 category_type: li.resources?.categories?.type || li._category_type || '',
                 capex_opex: li.capex_opex || li.resources?.categories?.type || '',
+                billing_type: li.billing_type || 'per_use',
                 saveTocatalog: false,
                 isCustom: !li.resource_id,
                 _overrideCat: false,
@@ -168,21 +178,21 @@ export default function ProjectModal({ open, onClose, onSave, project, initialLi
 
     function setField(f, v) { setForm(prev => ({ ...prev, [f]: v })) }
 
-    // Recompute labor working days whenever project dates or mode changes
+    // Recompute working_days for time-based items whenever project dates or mode changes
     useEffect(() => {
         setItems(prev => prev.map(item => {
-            if (item.resource_type !== 'Labor') return item
-            if (item._overrideDates) return item // keep manual override
-            const days = computeDays(
-                form.start_date, form.end_date, form.working_days_mode
-            )
+            // Only auto-update if not using manual date override
+            if (item._overrideDates) return item
+            const isTimeBased = resolveDurationFromUnit(item.unit, 1) !== null
+            if (!isTimeBased) return item
+            const days = computeDays(form.start_date, form.end_date, form.working_days_mode)
             return { ...item, working_days: days }
         }))
     }, [form.start_date, form.end_date, form.working_days_mode])
 
     function addFromCatalog(resource) {
-        const isLabor = resource.resource_type === 'Labor'
-        const days = isLabor
+        const isTimeBased = resolveDurationFromUnit(resource.unit, 1) !== null
+        const days = isTimeBased
             ? computeDays(form.start_date, form.end_date, form.working_days_mode)
             : null
 
@@ -190,7 +200,8 @@ export default function ProjectModal({ open, onClose, onSave, project, initialLi
             _id: Math.random().toString(36).slice(2),
             resource_id: resource.id,
             name: resource.name,
-            unit: resource.unit || (isLabor ? 'day' : ''),
+            // ✅ Always use the resource's actual unit — never override with 'day'
+            unit: resource.unit || '',
             image_url: resource.image_url || '',
             resource_type: resource.resource_type || 'Material',
             trade: resource.trade || '',
@@ -241,13 +252,24 @@ export default function ProjectModal({ open, onClose, onSave, project, initialLi
         setItems(prev => prev.map(i => {
             if (i._id !== id) return i
 
-            // Category change — also update capex_opex
             if (field === 'category_id') {
                 const cat = categories.find(c => c.id === value)
                 return { ...i, category_id: value, category_name: cat?.name || '', category_type: cat?.type || '', capex_opex: cat?.type || '' }
             }
 
-            // Labor date override — recompute days
+            // When unit changes, recompute working_days if time-based
+            if (field === 'unit') {
+                const isTimeBased = resolveDurationFromUnit(value, 1) !== null
+                const days = isTimeBased
+                    ? computeDays(
+                        i._overrideDates ? i.labor_start_date : form.start_date,
+                        i._overrideDates ? i.labor_end_date : form.end_date,
+                        form.working_days_mode
+                    )
+                    : null
+                return { ...i, unit: value, working_days: days }
+            }
+
             if (field === 'labor_start_date' || field === 'labor_end_date') {
                 const newItem = { ...i, [field]: value, _overrideDates: true }
                 const start = field === 'labor_start_date' ? value : i.labor_start_date
@@ -258,7 +280,6 @@ export default function ProjectModal({ open, onClose, onSave, project, initialLi
                 return newItem
             }
 
-            // Clearing date override — revert to project dates
             if (field === '_clearDateOverride') {
                 const days = computeDays(form.start_date, form.end_date, form.working_days_mode)
                 return { ...i, labor_start_date: '', labor_end_date: '', _overrideDates: false, working_days: days }
@@ -272,23 +293,21 @@ export default function ProjectModal({ open, onClose, onSave, project, initialLi
         setItems(prev => prev.filter(i => i._id !== id))
     }
 
-    // Compute subtotal per item — labor uses daily_rate × workers × days
+    // ── Unified subtotal — respects actual unit for ALL resource types ──
     function itemSubtotal(item) {
         const cost = parseFloat(item.unit_cost_snapshot) || 0
         const qty = parseInt(item.quantity) || 1
-        const isLabor = item.resource_type === 'Labor'
-        const isOpex = item.capex_opex === 'OPEX' || item.category_type === 'OPEX'
+        const workingDays = item.working_days || 0
 
-        if (isLabor) {
-            const days = item.working_days || 0
-            return cost * qty * days
-        }
-        if (isOpex && item.billing_type && item.billing_type !== 'per_use') {
-            const start = item.labor_start_date || form.start_date
-            const end = item.labor_end_date || form.end_date
-            const duration = resolveOpexDuration(item.billing_type, start, end)
+        // Resolve duration from the actual unit field
+        const duration = resolveDurationFromUnit(item.unit, workingDays)
+
+        if (duration !== null) {
+            // Time-based: rate × qty × duration
             return cost * qty * duration
         }
+
+        // Not time-based (lump sum, per unit, etc.)
         return cost * qty
     }
 
@@ -304,7 +323,6 @@ export default function ProjectModal({ open, onClose, onSave, project, initialLi
         setError(null)
 
         try {
-            // Save custom resources to catalog if checked
             const savedMap = {}
             for (const item of items.filter(i => i.isCustom && i.saveTocatalog && i.name.trim())) {
                 const { data } = await supabase
@@ -341,7 +359,8 @@ export default function ProjectModal({ open, onClose, onSave, project, initialLi
                     unit_cost_snapshot: parseFloat(i.unit_cost_snapshot) || 0,
                     capex_opex: i.capex_opex || null,
                     billing_type: i.billing_type || 'per_use',
-                    working_days: i.resource_type === 'Labor' ? (i.working_days || null) : null,
+                    // ✅ Always persist working_days for any time-based item
+                    working_days: i.working_days || null,
                     labor_start_date: i._overrideDates ? (i.labor_start_date || null) : null,
                     labor_end_date: i._overrideDates ? (i.labor_end_date || null) : null,
                     _name: i.name,
@@ -379,7 +398,7 @@ export default function ProjectModal({ open, onClose, onSave, project, initialLi
                         <div className="mf-group">
                             <label>Project name *</label>
                             <input value={form.name} onChange={e => setField('name', e.target.value)}
-                                placeholder="e.g. Naga City Road Widening Phase 2" required autoFocus />
+                                placeholder="e.g. Naga City Core Network Upgrade" required autoFocus />
                         </div>
 
                         <div className="mf-group">
@@ -414,7 +433,6 @@ export default function ProjectModal({ open, onClose, onSave, project, initialLi
                             </div>
                         </div>
 
-                        {/* Working days mode */}
                         <div className="mf-group">
                             <label>Day counting for labor</label>
                             <div className="pm-day-mode">
@@ -435,7 +453,6 @@ export default function ProjectModal({ open, onClose, onSave, project, initialLi
                             </div>
                         </div>
 
-                        {/* Cost summary */}
                         <div className="pm-cost-summary">
                             <div className="pm-cost-row">
                                 <span>Resources</span>
@@ -500,9 +517,17 @@ export default function ProjectModal({ open, onClose, onSave, project, initialLi
                             <div className="pm-items-list">
                                 {items.map(item => {
                                     const isLabor = item.resource_type === 'Labor'
-                                    const days = item.working_days || 0
+                                    const workingDays = item.working_days || 0
+                                    const duration = resolveDurationFromUnit(item.unit, workingDays)
+                                    const isTimeBased = duration !== null
                                     const subtotal = itemSubtotal(item)
                                     const hasProject = !!(form.start_date && form.end_date)
+
+                                    // Human-readable duration label for formula preview
+                                    const unitNorm = (item.unit || '').toLowerCase().trim()
+                                    const durationWord = unitNorm === 'per week' || unitNorm === 'week'
+                                        ? 'week' : unitNorm === 'per month' || unitNorm === 'month'
+                                            ? 'month' : 'day'
 
                                     return (
                                         <div key={item._id} className={`pm-item-card ${isLabor ? 'pm-item-labor' : ''}`}>
@@ -543,7 +568,7 @@ export default function ProjectModal({ open, onClose, onSave, project, initialLi
                                             {/* Row 2: cost fields */}
                                             <div className="pm-item-fields">
                                                 <div className="pm-item-field">
-                                                    <label>{isLabor ? 'Daily rate' : 'Unit cost'}</label>
+                                                    <label>{isLabor ? 'Rate' : 'Unit cost'}</label>
                                                     <input className="proj-item-input"
                                                         type="number" min="0" step="0.01"
                                                         value={item.unit_cost_snapshot}
@@ -554,21 +579,12 @@ export default function ProjectModal({ open, onClose, onSave, project, initialLi
                                                     />
                                                 </div>
 
-                                                {isLabor ? (
-                                                    <div className="pm-item-field">
-                                                        <label>Workers</label>
-                                                        <input className="proj-item-input" type="number" min="1"
-                                                            value={item.quantity}
-                                                            onChange={e => updateItem(item._id, 'quantity', e.target.value)} />
-                                                    </div>
-                                                ) : (
-                                                    <div className="pm-item-field">
-                                                        <label>Qty</label>
-                                                        <input className="proj-item-input" type="number" min="1"
-                                                            value={item.quantity}
-                                                            onChange={e => updateItem(item._id, 'quantity', e.target.value)} />
-                                                    </div>
-                                                )}
+                                                <div className="pm-item-field">
+                                                    <label>{isLabor ? 'Workers' : 'Qty'}</label>
+                                                    <input className="proj-item-input" type="number" min="1"
+                                                        value={item.quantity}
+                                                        onChange={e => updateItem(item._id, 'quantity', e.target.value)} />
+                                                </div>
 
                                                 <div className="pm-item-field" style={{ flex: 2 }}>
                                                     <label>Category</label>
@@ -594,31 +610,51 @@ export default function ProjectModal({ open, onClose, onSave, project, initialLi
                                                     )}
                                                 </div>
 
-                                                {/* Unit field — smart combo for all resource types */}
-                                                {!isLabor && (
-                                                    <div className="pm-item-field">
-                                                        <label>Unit</label>
+                                                {/* Unit field — always shown, editable for custom items */}
+                                                <div className="pm-item-field">
+                                                    <label>Unit</label>
+                                                    {item.isCustom ? (
                                                         <UnitComboField
                                                             value={item.unit || ''}
                                                             onChange={(unit, billing_type) => {
                                                                 setItems(prev => prev.map(i =>
                                                                     i._id === item._id ? { ...i, unit, billing_type } : i
                                                                 ))
+                                                                // Also recompute working_days if time-based
+                                                                updateItem(item._id, 'unit', unit)
                                                             }}
-                                                            placeholder="e.g. per bag"
+                                                            placeholder="e.g. per month"
                                                         />
-                                                    </div>
-                                                )}
+                                                    ) : (
+                                                        // Read-only display of the resource's actual unit
+                                                        <div style={{
+                                                            padding: '7px 10px',
+                                                            background: '#f9f8f5',
+                                                            borderRadius: 6,
+                                                            fontSize: 13,
+                                                            color: '#7a7872',
+                                                            border: '1px solid #e8e5e0',
+                                                        }}>
+                                                            {item.unit || '—'}
+                                                        </div>
+                                                    )}
+                                                </div>
                                             </div>
-                                            {/* Row 3: Labor — working days */}
-                                            {isLabor && (
+
+                                            {/* Row 3: Date override row — shown for ANY time-based item */}
+                                            {isTimeBased && (
                                                 <div className="pm-labor-days-row">
                                                     <div className="pm-labor-days-info">
                                                         <Calendar size={12} strokeWidth={1.5} />
                                                         {item._overrideDates ? (
                                                             <span className="pm-labor-override-label">Custom dates</span>
                                                         ) : hasProject ? (
-                                                            <span>{days} {form.working_days_mode === 'working_days' ? 'working' : 'calendar'} days</span>
+                                                            <span>
+                                                                {duration} {durationWord}{duration !== 1 ? 's' : ''}
+                                                                <span style={{ color: '#aaa89f', marginLeft: 4 }}>
+                                                                    ({workingDays} days)
+                                                                </span>
+                                                            </span>
                                                         ) : (
                                                             <span style={{ color: '#f08c00' }}>Set project dates to auto-calculate</span>
                                                         )}
@@ -637,8 +673,8 @@ export default function ProjectModal({ open, onClose, onSave, project, initialLi
                                                 </div>
                                             )}
 
-                                            {/* Date override inputs for labor */}
-                                            {isLabor && item._overrideDates && (
+                                            {/* Date override inputs */}
+                                            {isTimeBased && item._overrideDates && (
                                                 <div className="pm-item-fields" style={{ paddingTop: 0 }}>
                                                     <div className="pm-item-field">
                                                         <label>Start</label>
@@ -655,41 +691,22 @@ export default function ProjectModal({ open, onClose, onSave, project, initialLi
                                                     <div className="pm-item-field" style={{ justifyContent: 'flex-end' }}>
                                                         <label>&nbsp;</label>
                                                         <div style={{ fontSize: 12, color: '#c9a84c', fontWeight: 600, padding: '8px 4px' }}>
-                                                            {item.working_days || 0} days
+                                                            {workingDays} days
                                                         </div>
                                                     </div>
                                                 </div>
                                             )}
 
-                                            {/* Labor formula preview */}
-                                            {isLabor && parseFloat(item.unit_cost_snapshot) > 0 && days > 0 && (
-                                                <div className="pm-labor-formula">
-                                                    {formatCost(parseFloat(item.unit_cost_snapshot), form.currency)}/day
-                                                    × {item.quantity || 1} worker{(item.quantity || 1) > 1 ? 's' : ''}
-                                                    × {days} days
+                                            {/* Formula preview — unified for all time-based resources */}
+                                            {isTimeBased && parseFloat(item.unit_cost_snapshot) > 0 && duration > 0 && (
+                                                <div className={`pm-labor-formula ${!isLabor ? 'style="background: rgba(139,92,246,0.06); border-top-color: rgba(139,92,246,0.15)"' : ''}`}
+                                                    style={!isLabor ? { background: 'rgba(139,92,246,0.06)', borderTopColor: 'rgba(139,92,246,0.15)' } : {}}>
+                                                    {formatCost(parseFloat(item.unit_cost_snapshot), form.currency)}/{durationWord}
+                                                    × {item.quantity || 1} {isLabor ? `worker${(item.quantity || 1) > 1 ? 's' : ''}` : `unit${(item.quantity || 1) > 1 ? 's' : ''}`}
+                                                    × {duration} {durationWord}{duration !== 1 ? 's' : ''}
                                                     = <strong>{formatCost(subtotal, form.currency)}</strong>
                                                 </div>
                                             )}
-
-                                            {/* OPEX formula preview */}
-                                            {!isLabor && (item.capex_opex === 'OPEX' || item.category_type === 'OPEX')
-                                                && item.billing_type && item.billing_type !== 'per_use'
-                                                && parseFloat(item.unit_cost_snapshot) > 0
-                                                && hasProject && (() => {
-                                                    const start = item.labor_start_date || form.start_date
-                                                    const end = item.labor_end_date || form.end_date
-                                                    const duration = resolveOpexDuration(item.billing_type, start, end)
-                                                    const unit = item.billing_type.replace('per_', '')
-                                                    return (
-                                                        <div className="pm-labor-formula" style={{ background: 'rgba(139,92,246,0.06)', borderTopColor: 'rgba(139,92,246,0.15)' }}>
-                                                            {formatCost(parseFloat(item.unit_cost_snapshot), form.currency)}/{unit}
-                                                            × {item.quantity || 1} unit{(item.quantity || 1) > 1 ? 's' : ''}
-                                                            × {duration} {unit}{duration !== 1 ? 's' : ''}
-                                                            = <strong>{formatCost(subtotal, form.currency)}</strong>
-                                                        </div>
-                                                    )
-                                                })()
-                                            }
 
                                             {/* Subtotal row */}
                                             <div className="pm-item-subtotal-row">
@@ -700,7 +717,6 @@ export default function ProjectModal({ open, onClose, onSave, project, initialLi
                                     )
                                 })}
 
-                                {/* Save-to-catalog checkboxes */}
                                 {items.some(i => i.isCustom && i.name.trim()) && (
                                     <div className="proj-save-catalog-section">
                                         <p className="proj-save-catalog-label">Save custom resources to catalog?</p>

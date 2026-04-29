@@ -40,6 +40,18 @@ function getDuration(start, end) {
     return `${(days / 365).toFixed(1)} years`
 }
 
+// ── Unified duration resolver — works for ALL resource types ──
+// Returns the duration multiplier based on unit + working days.
+// Per day → raw days, per week → ceil(days/5), per month → ceil(days/22)
+// Returns null for flat/lump-sum items (no time multiplier needed).
+function resolveDurationFromUnit(unit, workingDays) {
+    const u = (unit || '').toLowerCase().trim()
+    if (u === 'per day' || u === 'day') return workingDays
+    if (u === 'per week' || u === 'week') return Math.ceil(workingDays / 5)
+    if (u === 'per month' || u === 'month') return Math.ceil(workingDays / 22)
+    return null
+}
+
 function TimelineBar({ start, end, status }) {
     if (!start) return null
 
@@ -48,7 +60,6 @@ function TimelineBar({ start, end, status }) {
     const now = new Date()
     const color = STATUS_CONFIG[status]?.color || '#aaa89f'
 
-    // No end date — show open-ended bar with time elapsed since start
     if (!endDate) {
         const daysElapsed = Math.floor((now - startDate) / 86400000)
         return (
@@ -69,7 +80,6 @@ function TimelineBar({ start, end, status }) {
     const elapsed = Math.min(Math.max(now - startDate, 0), total)
     const pct = total > 0 ? Math.round((elapsed / total) * 100) : 100
 
-    // Same start and end date — just show a note
     if (total <= 0) {
         return (
             <div className="pj-timeline-bar-wrap">
@@ -87,7 +97,6 @@ function TimelineBar({ start, end, status }) {
     const totalDays = Math.round(total / 86400000)
     const daysLeft = Math.max(0, Math.round((endDate - now) / 86400000))
     const isOver = now > endDate
-
     const midLabel = isOver
         ? `Completed · ${totalDays}d total`
         : `${pct}% elapsed · ${daysLeft}d remaining`
@@ -95,10 +104,7 @@ function TimelineBar({ start, end, status }) {
     return (
         <div className="pj-timeline-bar-wrap">
             <div className="pj-timeline-bar-track">
-                <div
-                    className="pj-timeline-bar-fill"
-                    style={{ width: `${pct}%`, background: color }}
-                />
+                <div className="pj-timeline-bar-fill" style={{ width: `${pct}%`, background: color }} />
             </div>
             <div className="pj-timeline-bar-labels">
                 <span>{startDate.toLocaleDateString('en-PH', { month: 'short', year: 'numeric' })}</span>
@@ -120,7 +126,7 @@ export default function ProjectDetail() {
     const [deleteLoading, setDeleteLoading] = useState(false)
     const [toast, setToast] = useState(null)
     const [inflationOn, setInflationOn] = useState(false)
-    const [activeTab, setActiveTab] = useState('costs') // 'costs' | 'labor'
+    const [activeTab, setActiveTab] = useState('costs')
 
     const inflationRates = useInflationRatesReadonly()
 
@@ -133,7 +139,6 @@ export default function ProjectDetail() {
         await updateProject(id, payload, items)
         showToast('Project updated.')
         setEditOpen(false)
-        // refresh — reload the page to re-fetch
         window.location.reload()
     }
 
@@ -163,65 +168,108 @@ export default function ProjectDetail() {
     const statusCfg = STATUS_CONFIG[project.status] || STATUS_CONFIG.planned
     const StatusIcon = statusCfg.icon
     const currentYear = new Date().getFullYear()
-
-    // The baseline year for this project — used when a line item has no procured_at
     const projectBaseYear = project.start_date
         ? new Date(project.start_date).getFullYear()
         : new Date(project.created_at).getFullYear()
 
-    // Per-line adjusted costs + labor day-based total
     function getAdjustedLineCost(item) {
         if (!inflationOn) return item.unit_cost_snapshot
         return adjustedLineItemCost(item, inflationRates, currentYear, projectBaseYear)
     }
 
-    const displayItems = lineItems.map(item => {
-        const adjUnitCost = getAdjustedLineCost(item)
-        const isLabor = item.resources?.resource_type === 'Labor'
+    // ── Resolve working days for any item ────────────────
+    // Uses stored working_days first, then falls back to counting from dates.
+    function resolveWorkingDays(item) {
+        if (item.working_days) return item.working_days
 
-        // Resolve working days: use stored value, or compute from project dates
-        let workingDays = item.working_days || 0
-        if (isLabor && !workingDays && project.start_date && project.end_date) {
-            const mode = project.working_days_mode || 'working_days'
-            if (mode === 'working_days') {
-                // Import countWorkingDays inline to avoid circular deps
-                const start = new Date(project.start_date)
-                const end = new Date(project.end_date)
-                let count = 0
-                const cur = new Date(start)
-                while (cur <= end) {
-                    const day = cur.getDay()
-                    if (day !== 0 && day !== 6) count++
-                    cur.setDate(cur.getDate() + 1)
-                }
-                workingDays = count
-            } else {
-                const diff = new Date(project.end_date) - new Date(project.start_date)
-                workingDays = Math.max(0, Math.round(diff / 86400000) + 1)
-            }
+        // Only count days if the item is time-based
+        const unit = (item.resources?.unit || item.unit || '').toLowerCase().trim()
+        const isLabor = item.resources?.resource_type === 'Labor' || item.resource_type === 'Labor'
+        const isTimeBased = resolveDurationFromUnit(unit, 1) !== null
+
+        if (!isTimeBased && !isLabor) return 0
+
+        const start = item.labor_start_date || project.start_date
+        const end = item.labor_end_date || project.end_date
+        if (!start || !end) return 0
+
+        const mode = project.working_days_mode || 'working_days'
+        if (mode === 'calendar_days') {
+            return Math.max(0, Math.round((new Date(end) - new Date(start)) / 86400000) + 1)
         }
 
-        const displayTotal = isLabor
-            ? adjUnitCost * item.quantity * workingDays
+        // Working days — count weekdays only
+        const s = new Date(start); s.setHours(0, 0, 0, 0)
+        const e = new Date(end); e.setHours(0, 0, 0, 0)
+        let count = 0
+        const cur = new Date(s)
+        while (cur <= e) {
+            const d = cur.getDay()
+            if (d !== 0 && d !== 6) count++
+            cur.setDate(cur.getDate() + 1)
+        }
+        return count
+    }
+
+    // ── Build display items — unified unit-based calculation ──
+    const displayItems = lineItems.map(item => {
+        const adjUnitCost = getAdjustedLineCost(item)
+
+        // Always read the unit from the resource record first, then fall back to item-level
+        const unit = (item.resources?.unit || item.unit || '').toLowerCase().trim()
+        const workingDays = resolveWorkingDays(item)
+
+        // ✅ Same logic for BOTH labor and non-labor — unit drives the multiplier
+        const duration = resolveDurationFromUnit(unit, workingDays)
+
+        const displayTotal = duration !== null
+            ? adjUnitCost * item.quantity * duration
             : adjUnitCost * item.quantity
 
         return {
             ...item,
+            _resolvedUnit: unit,
             display_unit_cost: adjUnitCost,
             display_total: displayTotal,
-            working_days: workingDays,  // resolved value
+            working_days: workingDays,
+            _duration: duration,
         }
     })
 
     const capexTotal = displayItems.filter(i => i.capex_opex === 'CAPEX').reduce((s, i) => s + i.display_total, 0)
     const opexTotal = displayItems.filter(i => i.capex_opex === 'OPEX').reduce((s, i) => s + i.display_total, 0)
     const otherTotal = displayItems.filter(i => !i.capex_opex).reduce((s, i) => s + i.display_total, 0)
-    const laborTotal = displayItems.filter(i => i.resources?.resource_type === 'Labor').reduce((s, i) => s + i.display_total, 0)
+    const laborTotal = displayItems
+        .filter(i => i.resources?.resource_type === 'Labor' || i.resource_type === 'Labor')
+        .reduce((s, i) => s + i.display_total, 0)
     const grandTotal = displayItems.reduce((s, i) => s + i.display_total, 0)
+
+    // Human-readable label for the qty cell in the table
+    function qtyLabel(item) {
+        const isLabor = item.resources?.resource_type === 'Labor' || item.resource_type === 'Labor'
+        const u = item._resolvedUnit
+        const duration = item._duration
+
+        if (duration === null) return item.quantity  // flat item
+
+        const unitWord = u === 'per week' || u === 'week' ? 'week'
+            : u === 'per month' || u === 'month' ? 'month'
+                : 'day'
+
+        return (
+            <div>
+                <div style={{ fontWeight: 500, color: '#1a1917' }}>
+                    {item.quantity} {isLabor ? `worker${item.quantity !== 1 ? 's' : ''}` : `unit${item.quantity !== 1 ? 's' : ''}`}
+                </div>
+                <div style={{ fontSize: 11, color: '#c9a84c' }}>
+                    × {duration} {unitWord}{duration !== 1 ? 's' : ''}
+                </div>
+            </div>
+        )
+    }
 
     return (
         <div className="pjd-page">
-            {/* ── Back nav ── */}
             <button className="pjd-back" onClick={() => navigate('/projects')}>
                 <ArrowLeft size={16} strokeWidth={1.5} /> Back to projects
             </button>
@@ -339,7 +387,6 @@ export default function ProjectDetail() {
             {/* ── Costs tab ── */}
             {activeTab === 'costs' && (
                 <div className="pjd-body">
-                    {/* ── Left column ── */}
                     <div className="pjd-left">
 
                         {/* Timeline card */}
@@ -391,7 +438,7 @@ export default function ProjectDetail() {
                                                 <th>Resource</th>
                                                 <th>Type</th>
                                                 <th style={{ textAlign: 'right' }}>Unit cost</th>
-                                                <th style={{ textAlign: 'center' }}>Qty</th>
+                                                <th style={{ textAlign: 'center' }}>Qty / Duration</th>
                                                 <th style={{ textAlign: 'right' }}>Subtotal</th>
                                             </tr>
                                         </thead>
@@ -411,8 +458,10 @@ export default function ProjectDetail() {
                                                                         {item.resources?.name || <span style={{ color: '#aaa89f' }}>Custom resource</span>}
                                                                     </div>
                                                                     {item.resources?.categories && (
-                                                                        <span className={`badge ${item.resources.categories.type === 'CAPEX' ? 'badge-blue' : 'badge-purple'}`}
-                                                                            style={{ fontSize: 10, marginTop: 3 }}>
+                                                                        <span
+                                                                            className={`badge ${item.resources.categories.type === 'CAPEX' ? 'badge-blue' : 'badge-purple'}`}
+                                                                            style={{ fontSize: 10, marginTop: 3 }}
+                                                                        >
                                                                             {item.resources.categories.name}
                                                                         </span>
                                                                     )}
@@ -428,8 +477,8 @@ export default function ProjectDetail() {
                                                         <td style={{ textAlign: 'right' }}>
                                                             <div style={{ fontWeight: 500 }}>
                                                                 {formatCost(item.display_unit_cost, project.currency)}
-                                                                {item.resources?.unit && (
-                                                                    <span style={{ color: '#aaa89f', fontWeight: 400, fontSize: 11 }}> {item.resources.unit}</span>
+                                                                {item._resolvedUnit && (
+                                                                    <span style={{ color: '#aaa89f', fontWeight: 400, fontSize: 11 }}> /{item._resolvedUnit.replace('per ', '')}</span>
                                                                 )}
                                                             </div>
                                                             {isAdjusted && (
@@ -439,14 +488,7 @@ export default function ProjectDetail() {
                                                             )}
                                                         </td>
                                                         <td style={{ textAlign: 'center', color: '#7a7872' }}>
-                                                            {item.resources?.resource_type === 'Labor' ? (
-                                                                <div>
-                                                                    <div style={{ fontWeight: 500, color: '#1a1917' }}>{item.quantity} workers</div>
-                                                                    {item.working_days && (
-                                                                        <div style={{ fontSize: 11, color: '#c9a84c' }}>× {item.working_days} days</div>
-                                                                    )}
-                                                                </div>
-                                                            ) : item.quantity}
+                                                            {qtyLabel(item)}
                                                         </td>
                                                         <td style={{ textAlign: 'right', fontWeight: 650, color: '#1a1917' }}>
                                                             {formatCost(item.display_total, project.currency)}
@@ -543,7 +585,6 @@ export default function ProjectDetail() {
                             </div>
                         </div>
 
-                        {/* CAPEX / OPEX donut-ish bar */}
                         {grandTotal > 0 && (capexTotal > 0 || opexTotal > 0) && (
                             <div className="card pjd-section">
                                 <div className="pjd-section-title">
@@ -589,7 +630,7 @@ export default function ProjectDetail() {
                         )}
                     </div>
                 </div>
-            )} {/* end costs tab */}
+            )}
 
             {/* ── Edit modal ── */}
             <ProjectModal

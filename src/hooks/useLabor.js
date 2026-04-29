@@ -170,10 +170,17 @@ export async function recalcProjectTotal(projectId) {
     const total = (items || []).reduce((sum, item) => {
         const cost = item.unit_cost_snapshot || 0
         const qty = item.quantity || 1
+        const unit = (item.unit || '').toLowerCase().trim()
+        const days = resolveWorkingDays(item)
+
+        // Labor: always rate × workers × days
         if (item.resource_type === 'Labor') {
-            const days = resolveWorkingDays(item)
-            return sum + cost * qty * (days || 0)
+            return sum + cost * qty * days
         }
+        // Non-labor: unit-based if applicable
+        if (unit === 'per day') return sum + cost * qty * days
+        if (unit === 'per week') return sum + cost * qty * Math.ceil(days / 5)
+        if (unit === 'per month') return sum + cost * qty * Math.ceil(days / 22)
         return sum + cost * qty
     }, 0)
 

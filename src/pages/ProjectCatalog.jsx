@@ -31,7 +31,7 @@ function formatCost(amount, currency = 'PHP') {
     return new Intl.NumberFormat('en-PH', {
         style: 'currency', currency,
         minimumFractionDigits: 0, maximumFractionDigits: 0,
-    }).format(amount)
+    }).format(amount || 0)
 }
 
 function formatDate(d) {
@@ -68,11 +68,17 @@ export default function ProjectCatalog() {
 
     async function openEdit(e, project) {
         e.stopPropagation()
-        // fetch line items for this project
         const { supabase } = await import('../lib/supabaseClient')
         const { data } = await supabase
             .from('project_resources')
-            .select('*, resources(id, name, unit, currency, categories(name, type))')
+            .select(`
+                *,
+                resources(
+                    id, name, unit, currency,
+                    resource_type, trade, image_url,
+                    categories(id, name, type)
+                )
+            `)
             .eq('project_id', project.id)
         setEditing(project)
         setEditLineItems(data || [])
@@ -100,13 +106,16 @@ export default function ProjectCatalog() {
         setDeleteTarget(null)
     }
 
-    // Inflation-adjusted cost — YoY compounding from project start year → inflationYear
+    // ✅ Read total_cost directly from the DB record.
+    // useProjects.js now writes the correct unit-aware total on every
+    // create / update, and useProjectDetail syncs it on every detail view.
     function getDisplayCost(project) {
-        if (!inflationOn) return formatCost(project.total_cost, project.currency)
+        const total = project.total_cost ?? 0
+        if (!inflationOn) return formatCost(total, project.currency)
         const fromYear = project.start_date
             ? new Date(project.start_date).getFullYear()
             : new Date(project.created_at).getFullYear()
-        if (inflationYear <= fromYear) return formatCost(project.total_cost, project.currency)
+        if (inflationYear <= fromYear) return formatCost(total, project.currency)
         const adjusted = adjustedProjectCost(project, inflationRates, inflationYear)
         return formatCost(adjusted, project.currency)
     }
@@ -116,7 +125,6 @@ export default function ProjectCatalog() {
 
     return (
         <div className="pj-page">
-            {/* ── Header ── */}
             <div className="page-header">
                 <div className="page-header-text">
                     <h2>Project Catalog</h2>
@@ -132,7 +140,6 @@ export default function ProjectCatalog() {
                 </div>
             </div>
 
-            {/* ── Toolbar ── */}
             <div className="rc-toolbar">
                 <div className="rc-search" style={{ maxWidth: 360 }}>
                     <Search size={15} strokeWidth={1.5} />
@@ -155,7 +162,6 @@ export default function ProjectCatalog() {
                     {activeFilters > 0 && <span className="filter-count">{activeFilters}</span>}
                 </button>
 
-                {/* Inflation toggle */}
                 <div className={`pj-inflation-toggle ${inflationOn ? 'active' : ''}`}>
                     <button
                         className="pj-inflation-btn"
@@ -180,7 +186,6 @@ export default function ProjectCatalog() {
                 </div>
             </div>
 
-            {/* ── Filters ── */}
             {showFilters && (
                 <div className="rc-filter-panel">
                     <div className="mf-group">
@@ -200,7 +205,6 @@ export default function ProjectCatalog() {
 
             {error && <div className="rc-error"><AlertTriangle size={15} /> {error}</div>}
 
-            {/* ── Loading ── */}
             {loading && (
                 <div className="pj-grid">
                     {Array.from({ length: 6 }).map((_, i) => (
@@ -209,7 +213,6 @@ export default function ProjectCatalog() {
                 </div>
             )}
 
-            {/* ── Empty ── */}
             {!loading && !error && projects.length === 0 && (
                 <div className="rc-empty">
                     <div className="rc-empty-icon">🏗️</div>
@@ -223,7 +226,6 @@ export default function ProjectCatalog() {
                 </div>
             )}
 
-            {/* ── Cards ── */}
             {!loading && projects.length > 0 && (
                 <div className="pj-grid">
                     {projects.map((p, i) => (
@@ -233,7 +235,6 @@ export default function ProjectCatalog() {
                             style={{ animationDelay: `${i * 35}ms` }}
                             onClick={() => navigate(`/projects/${p.id}`)}
                         >
-                            {/* Status dot + badge */}
                             <div className="pj-card-top">
                                 <span className={`badge ${STATUS_BADGE[p.status] || 'badge-gray'}`}>
                                     <span className="pj-status-dot" style={{ background: STATUS_DOT[p.status] }} />
@@ -250,15 +251,12 @@ export default function ProjectCatalog() {
                                 </div>
                             </div>
 
-                            {/* Name */}
                             <div className="pj-card-name">{p.name}</div>
 
-                            {/* Description */}
                             {p.description && (
                                 <p className="pj-card-desc">{p.description}</p>
                             )}
 
-                            {/* Cost */}
                             <div className="pj-card-cost">
                                 {getDisplayCost(p)}
                                 {inflationOn && (
@@ -266,7 +264,6 @@ export default function ProjectCatalog() {
                                 )}
                             </div>
 
-                            {/* Dates */}
                             {(p.start_date || p.end_date) && (
                                 <div className="pj-card-dates">
                                     <span>{formatDate(p.start_date) ?? '—'}</span>
@@ -283,7 +280,6 @@ export default function ProjectCatalog() {
                 </div>
             )}
 
-            {/* ── Modals ── */}
             <ProjectModal
                 open={modalOpen}
                 onClose={() => setModalOpen(false)}
