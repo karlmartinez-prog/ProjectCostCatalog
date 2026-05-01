@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import {
     ArrowLeft, Pencil, Trash2, Calendar, DollarSign,
     Package, TrendingUp, AlertTriangle, Clock, CheckCircle2,
-    XCircle, CircleDot, X, HardHat
+    XCircle, CircleDot, X, HardHat, Building2, ExternalLink
 } from 'lucide-react'
 import { useProjectDetail } from '../hooks/useProjects'
 import { useProjects } from '../hooks/useProjects'
@@ -40,10 +40,6 @@ function getDuration(start, end) {
     return `${(days / 365).toFixed(1)} years`
 }
 
-// ── Unified duration resolver — works for ALL resource types ──
-// Returns the duration multiplier based on unit + working days.
-// Per day → raw days, per week → ceil(days/5), per month → ceil(days/22)
-// Returns null for flat/lump-sum items (no time multiplier needed).
 function resolveDurationFromUnit(unit, workingDays) {
     const u = (unit || '').toLowerCase().trim()
     if (u === 'per day' || u === 'day') return workingDays
@@ -115,6 +111,43 @@ function TimelineBar({ start, end, status }) {
     )
 }
 
+// ── Supplier pill shown inside a table cell ───────────
+function SupplierCell({ supplier }) {
+    if (!supplier) return <span style={{ color: '#ccc9c2', fontSize: 12 }}>—</span>
+
+    return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <Building2 size={11} strokeWidth={1.5} style={{ color: '#c9a84c', flexShrink: 0 }} />
+                <span style={{ fontSize: 12.5, fontWeight: 500, color: '#3a3834' }}>
+                    {supplier.name}
+                </span>
+            </div>
+            {supplier.contact_email && (
+                <span style={{ fontSize: 11, color: '#aaa89f' }}>{supplier.contact_email}</span>
+            )}
+            {supplier.phone && (
+                <span style={{ fontSize: 11, color: '#aaa89f' }}>{supplier.phone}</span>
+            )}
+            {supplier.website && (
+                <a
+                    href={supplier.website.startsWith('http') ? supplier.website : `https://${supplier.website}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={e => e.stopPropagation()}
+                    style={{
+                        fontSize: 11, color: '#2563eb',
+                        display: 'inline-flex', alignItems: 'center', gap: 3,
+                        textDecoration: 'none',
+                    }}
+                >
+                    <ExternalLink size={10} strokeWidth={1.5} /> {supplier.website.replace(/^https?:\/\//, '')}
+                </a>
+            )}
+        </div>
+    )
+}
+
 export default function ProjectDetail() {
     const { id } = useParams()
     const navigate = useNavigate()
@@ -177,12 +210,9 @@ export default function ProjectDetail() {
         return adjustedLineItemCost(item, inflationRates, currentYear, projectBaseYear)
     }
 
-    // ── Resolve working days for any item ────────────────
-    // Uses stored working_days first, then falls back to counting from dates.
     function resolveWorkingDays(item) {
         if (item.working_days) return item.working_days
 
-        // Only count days if the item is time-based
         const unit = (item.resources?.unit || item.unit || '').toLowerCase().trim()
         const isLabor = item.resources?.resource_type === 'Labor' || item.resource_type === 'Labor'
         const isTimeBased = resolveDurationFromUnit(unit, 1) !== null
@@ -198,7 +228,6 @@ export default function ProjectDetail() {
             return Math.max(0, Math.round((new Date(end) - new Date(start)) / 86400000) + 1)
         }
 
-        // Working days — count weekdays only
         const s = new Date(start); s.setHours(0, 0, 0, 0)
         const e = new Date(end); e.setHours(0, 0, 0, 0)
         let count = 0
@@ -211,15 +240,10 @@ export default function ProjectDetail() {
         return count
     }
 
-    // ── Build display items — unified unit-based calculation ──
     const displayItems = lineItems.map(item => {
         const adjUnitCost = getAdjustedLineCost(item)
-
-        // Always read the unit from the resource record first, then fall back to item-level
         const unit = (item.resources?.unit || item.unit || '').toLowerCase().trim()
         const workingDays = resolveWorkingDays(item)
-
-        // ✅ Same logic for BOTH labor and non-labor — unit drives the multiplier
         const duration = resolveDurationFromUnit(unit, workingDays)
 
         const displayTotal = duration !== null
@@ -244,13 +268,12 @@ export default function ProjectDetail() {
         .reduce((s, i) => s + i.display_total, 0)
     const grandTotal = displayItems.reduce((s, i) => s + i.display_total, 0)
 
-    // Human-readable label for the qty cell in the table
     function qtyLabel(item) {
         const isLabor = item.resources?.resource_type === 'Labor' || item.resource_type === 'Labor'
         const u = item._resolvedUnit
         const duration = item._duration
 
-        if (duration === null) return item.quantity  // flat item
+        if (duration === null) return item.quantity
 
         const unitWord = u === 'per week' || u === 'week' ? 'week'
             : u === 'per month' || u === 'month' ? 'month'
@@ -267,6 +290,9 @@ export default function ProjectDetail() {
             </div>
         )
     }
+
+    // Whether any item in the project has a supplier
+    const hasAnySupplier = displayItems.some(i => i.resources?.suppliers)
 
     return (
         <div className="pjd-page">
@@ -437,6 +463,8 @@ export default function ProjectDetail() {
                                             <tr>
                                                 <th>Resource</th>
                                                 <th>Type</th>
+                                                {/* Only render the Supplier column if at least one item has one */}
+                                                {hasAnySupplier && <th>Supplier</th>}
                                                 <th style={{ textAlign: 'right' }}>Unit cost</th>
                                                 <th style={{ textAlign: 'center' }}>Qty / Duration</th>
                                                 <th style={{ textAlign: 'right' }}>Subtotal</th>
@@ -445,8 +473,11 @@ export default function ProjectDetail() {
                                         <tbody>
                                             {displayItems.map(item => {
                                                 const isAdjusted = inflationOn && item.display_unit_cost !== item.unit_cost_snapshot
+                                                const supplier = item.resources?.suppliers ?? null
+
                                                 return (
                                                     <tr key={item.id}>
+                                                        {/* Resource name + category badge */}
                                                         <td>
                                                             <div className="rt-name-cell">
                                                                 {item.resources?.image_url
@@ -468,12 +499,21 @@ export default function ProjectDetail() {
                                                                 </div>
                                                             </div>
                                                         </td>
+
+                                                        {/* CAPEX / OPEX badge */}
                                                         <td>
                                                             {item.capex_opex
                                                                 ? <span className={`badge ${item.capex_opex === 'CAPEX' ? 'badge-blue' : 'badge-purple'}`}>{item.capex_opex}</span>
                                                                 : <span className="badge badge-gray">—</span>
                                                             }
                                                         </td>
+
+                                                        {/* Supplier — only rendered when column exists */}
+                                                        {hasAnySupplier && (
+                                                            <td><SupplierCell supplier={supplier} /></td>
+                                                        )}
+
+                                                        {/* Unit cost (with inflation strikethrough) */}
                                                         <td style={{ textAlign: 'right' }}>
                                                             <div style={{ fontWeight: 500 }}>
                                                                 {formatCost(item.display_unit_cost, project.currency)}
@@ -487,9 +527,13 @@ export default function ProjectDetail() {
                                                                 </div>
                                                             )}
                                                         </td>
+
+                                                        {/* Qty / Duration */}
                                                         <td style={{ textAlign: 'center', color: '#7a7872' }}>
                                                             {qtyLabel(item)}
                                                         </td>
+
+                                                        {/* Subtotal */}
                                                         <td style={{ textAlign: 'right', fontWeight: 650, color: '#1a1917' }}>
                                                             {formatCost(item.display_total, project.currency)}
                                                         </td>
@@ -584,6 +628,58 @@ export default function ProjectDetail() {
                                 )}
                             </div>
                         </div>
+
+                        {/* Suppliers summary card — only shown when project has suppliers */}
+                        {hasAnySupplier && (
+                            <div className="card pjd-section">
+                                <div className="pjd-section-title">
+                                    <Building2 size={15} strokeWidth={1.5} /> Suppliers
+                                </div>
+                                <div className="pjd-info-rows">
+                                    {/* Deduplicate suppliers by id */}
+                                    {Array.from(
+                                        new Map(
+                                            displayItems
+                                                .filter(i => i.resources?.suppliers)
+                                                .map(i => [i.resources.suppliers.id, i.resources.suppliers])
+                                        ).values()
+                                    ).map(supplier => (
+                                        <div key={supplier.id} className="pjd-info-row" style={{ alignItems: 'flex-start', gap: 10 }}>
+                                            <div style={{ flex: 1 }}>
+                                                <div style={{ fontWeight: 500, fontSize: 13, color: '#1a1917' }}>
+                                                    {supplier.name}
+                                                </div>
+                                                {supplier.contact_email && (
+                                                    <div style={{ fontSize: 11.5, color: '#7a7872', marginTop: 2 }}>
+                                                        {supplier.contact_email}
+                                                    </div>
+                                                )}
+                                                {supplier.phone && (
+                                                    <div style={{ fontSize: 11.5, color: '#7a7872' }}>
+                                                        {supplier.phone}
+                                                    </div>
+                                                )}
+                                                {supplier.website && (
+                                                    <a
+                                                        href={supplier.website.startsWith('http') ? supplier.website : `https://${supplier.website}`}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        style={{ fontSize: 11.5, color: '#2563eb', display: 'inline-flex', alignItems: 'center', gap: 3, textDecoration: 'none', marginTop: 2 }}
+                                                    >
+                                                        <ExternalLink size={10} strokeWidth={1.5} />
+                                                        {supplier.website.replace(/^https?:\/\//, '')}
+                                                    </a>
+                                                )}
+                                            </div>
+                                            {/* Resources from this supplier */}
+                                            <div style={{ fontSize: 11, color: '#aaa89f', textAlign: 'right', flexShrink: 0 }}>
+                                                {displayItems.filter(i => i.resources?.suppliers?.id === supplier.id).length} item{displayItems.filter(i => i.resources?.suppliers?.id === supplier.id).length !== 1 ? 's' : ''}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
 
                         {grandTotal > 0 && (capexTotal > 0 || opexTotal > 0) && (
                             <div className="card pjd-section">

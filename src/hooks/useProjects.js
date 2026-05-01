@@ -49,7 +49,6 @@ export function useProjects(filters = {}) {
     useEffect(() => { fetchProjects() }, [fetchProjects])
 
     async function createProject(projectPayload, lineItems) {
-        // Compute correct total before inserting
         const items = lineItems || []
         const total = items.reduce((sum, i) => sum + lineItemTotal(i), 0)
 
@@ -160,7 +159,8 @@ export function useProjectDetail(projectId) {
                     resources(
                         id, name, image_url, unit, currency,
                         resource_type, trade, procured_at,
-                        categories(id, name, type)
+                        categories(id, name, type),
+                        suppliers(id, name, contact_email, phone, website)
                     )
                 `)
                 .eq('project_id', projectId)
