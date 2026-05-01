@@ -25,6 +25,11 @@ export function getPresetRate(categoryName = '') {
     return PRESET_RATES.default
 }
 
+// Normalizes a Supabase inflation_rates row to expose `.rate` as an alias for `.rate_percent`
+function normalizeRate(r) {
+    return r ? { ...r, rate: r.rate_percent ?? 0 } : r
+}
+
 export function useInsights(quarterCount = 4) {
     const [costHistory, setCostHistory] = useState([])
     const [categories, setCategories] = useState([])
@@ -59,14 +64,15 @@ export function useInsights(quarterCount = 4) {
                     supabase
                         .from('project_resources')
                         .select('*, resources(id, name, categories(id, name, type))')
-                        .order('created_at', { ascending: true }),])
+                        .order('created_at', { ascending: true }),
+                ])
 
                 if (e1 || e2 || e3 || e4 || e5)
                     throw new Error([e1, e2, e3, e4, e5].find(e => e)?.message)
 
                 setCostHistory(hist || [])
                 setCategories(cats || [])
-                setInflationRates(rates || [])
+                setInflationRates((rates || []).map(normalizeRate))
                 setProjects(projs || [])
                 setLineItems(items || [])
             } catch (err) {
@@ -77,10 +83,7 @@ export function useInsights(quarterCount = 4) {
         fetch()
     }, [])
 
-    // ── Build quarterly spend data ────────────────────
     const quarterlyData = buildQuarterlyData(lineItems, quarterCount)
-
-    // ── Cost per category ─────────────────────────────
     const categorySpend = buildCategorySpend(lineItems)
 
     return {
@@ -95,27 +98,42 @@ export function useInflationRates() {
     const [loading, setLoading] = useState(true)
 
     useEffect(() => {
-        supabase.from('inflation_rates').select('*, categories(id, name)')
-            .then(({ data }) => { setRates(data || []); setLoading(false) })
+        supabase
+            .from('inflation_rates')
+            .select('*, categories(id, name)')
+            .then(({ data, error }) => {
+                if (error) console.error('useInflationRates load error:', error)
+                setRates((data || []).map(normalizeRate))
+                setLoading(false)
+            })
     }, [])
 
     async function upsertRate(categoryId, year, ratePercent, region = 'PH') {
-        const existing = rates.find(r => r.category_id === categoryId && r.year === year)
+        const existing = rates.find(
+            r => r.category_id === categoryId && r.year === year
+        )
+
         if (existing) {
-            const { data } = await supabase
+            const { data, error } = await supabase
                 .from('inflation_rates')
                 .update({ rate_percent: ratePercent })
                 .eq('id', existing.id)
                 .select('*, categories(id, name)')
                 .maybeSingle()
-            if (data) setRates(prev => prev.map(r => r.id === existing.id ? data : r))
+
+            if (error) { console.error('upsertRate update error:', error); return }
+            if (data) setRates(prev =>
+                prev.map(r => r.id === existing.id ? normalizeRate(data) : r)
+            )
         } else {
-            const { data } = await supabase
+            const { data, error } = await supabase
                 .from('inflation_rates')
                 .insert([{ category_id: categoryId, year, rate_percent: ratePercent, region }])
                 .select('*, categories(id, name)')
                 .maybeSingle()
-            if (data) setRates(prev => [...prev, data])
+
+            if (error) { console.error('upsertRate insert error:', error); return }
+            if (data) setRates(prev => [...prev, normalizeRate(data)])
         }
     }
 

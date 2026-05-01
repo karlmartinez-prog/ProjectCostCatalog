@@ -83,3 +83,76 @@ export async function estimateProjectCost(form, categories) {
         return JSON.parse(clean)
     }
 }
+
+export async function suggestInflationRates(categories) {
+    if (!GROQ_API_KEY) throw new Error('Groq API key is missing.')
+
+    const currentYear = new Date().getFullYear()
+    const years = [currentYear - 3, currentYear - 2, currentYear - 1, currentYear]
+
+    const categoryList = categories.map(c => `${c.name} (${c.type})`).join('\n')
+
+    const prompt = `You are a cost analyst for a Philippine telecom infrastructure company.
+
+Given these project cost categories:
+${categoryList}
+
+Suggest realistic annual inflation rates (in percent) for each category and each year listed.
+Base your suggestions on:
+- PSA (Philippine Statistics Authority) CPI data
+- DOLE wage orders for labor categories
+- DOE fuel price trends for fuel/power categories  
+- USD/PHP exchange rate trends for imported equipment categories
+- ERC/Meralco tariff history for utilities
+
+Years needed: ${years.join(', ')}
+
+Return ONLY a valid JSON array, no markdown, no explanation:
+[
+  {
+    "category_name": "exact category name from the list",
+    "rates": {
+      "${years[0]}": <number>,
+      "${years[1]}": <number>,
+      "${years[2]}": <number>,
+      "${years[3]}": <number>
+    },
+    "basis": "one sentence explaining the data source used"
+  }
+]`
+
+    const res = await fetch(GROQ_URL, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${GROQ_API_KEY}`,
+        },
+        body: JSON.stringify({
+            model: 'llama-3.1-8b-instant',
+            temperature: 0.2, // low temp for consistent numbers
+            messages: [
+                {
+                    role: 'system',
+                    content: 'You are a financial data analyst. Always respond with valid JSON only. No markdown, no explanation.',
+                },
+                { role: 'user', content: prompt }
+            ],
+        }),
+    })
+
+    if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err?.error?.message || 'Groq request failed.')
+    }
+
+    const data = await res.json()
+    const text = data.choices?.[0]?.message?.content
+    if (!text) throw new Error('Empty response from Groq.')
+
+    try {
+        return JSON.parse(text)
+    } catch {
+        const clean = text.replace(/```json|```/g, '').trim()
+        return JSON.parse(clean)
+    }
+}

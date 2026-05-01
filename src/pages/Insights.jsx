@@ -8,7 +8,7 @@ import {
     Loader, BarChart3, Activity, Settings2, Trash2
 } from 'lucide-react'
 import { useInsights, useInflationRates, getPresetRate } from '../hooks/useInsights'
-import { estimateProjectCost } from '../services/aiEstimator'
+import { estimateProjectCost, suggestInflationRates } from '../services/aiEstimator'
 import './insights.css'
 
 const PROJECT_TYPES = [
@@ -175,12 +175,10 @@ function AiEstimator({ categories }) {
                 </button>
             </div>
 
-            {/* Result */}
             {result && (
                 <div className="ins-result">
                     <div className="ins-result-summary">{result.summary}</div>
 
-                    {/* Low / Mid / High range */}
                     <div className="ins-range-strip">
                         <div className="ins-range-card ins-range-low">
                             <div className="ins-range-label">Low estimate</div>
@@ -199,7 +197,6 @@ function AiEstimator({ categories }) {
                         </div>
                     </div>
 
-                    {/* Breakdown table */}
                     <div className="ins-breakdown-title">Cost breakdown by category</div>
                     <div className="ins-breakdown-table-wrap">
                         <table className="rc-table">
@@ -232,7 +229,6 @@ function AiEstimator({ categories }) {
                         </table>
                     </div>
 
-                    {/* Assumptions */}
                     {result.assumptions?.length > 0 && (
                         <div className="ins-assumptions">
                             <div className="ins-assumptions-title">Key assumptions</div>
@@ -254,98 +250,131 @@ function AiEstimator({ categories }) {
 // ── Inflation Rates Manager ───────────────────────────
 function InflationManager({ categories }) {
     const { rates, loading, upsertRate, deleteRate } = useInflationRates()
-    const currentYear = new Date().getFullYear()
     const [saving, setSaving] = useState(null)
+    const [suggesting, setSuggesting] = useState(false)
+    const [suggestions, setSuggestions] = useState([])
+    const [suggestError, setSuggestError] = useState(null)
+    const currentYear = new Date().getFullYear()
+    const years = [currentYear - 3, currentYear - 2, currentYear - 1, currentYear]
 
-    async function handleUpsert(categoryId, year, rateStr) {
-        const rate = parseFloat(rateStr)
-        if (isNaN(rate)) return
-        setSaving(`${categoryId}-${year}`)
-        await upsertRate(categoryId, year, rate)
-        setSaving(null)
+    async function handleSuggest() {
+        setSuggesting(true)
+        setSuggestError(null)
+        try {
+            const result = await suggestInflationRates(categories)
+            setSuggestions(result)
+        } catch (err) {
+            setSuggestError(err.message)
+        }
+        setSuggesting(false)
     }
 
-    const years = [currentYear - 1, currentYear, currentYear + 1, currentYear + 2]
+    function getSuggestedRate(categoryName, year) {
+        const match = suggestions.find(s =>
+            s.category_name.toLowerCase() === categoryName.toLowerCase()
+        )
+        return match?.rates?.[year] ?? null
+    }
+
+    async function handleAcceptAll() {
+        const updates = categories.flatMap(cat =>
+            years
+                .map(year => ({ cat, year, rate: getSuggestedRate(cat.name, year) }))
+                .filter(({ rate }) => rate !== null)
+                .map(({ cat, year, rate }) => upsertRate(cat.id, year, rate))
+        )
+        await Promise.all(updates)
+        setSuggestions([])
+    }
 
     return (
         <div className="ins-card">
             <SectionHeader
                 icon={Settings2}
-                title="Inflation Rates"
-                sub="Set annual inflation rates per category. Used by the cost estimator and project calculator."
+                title="Inflation Rates Manager"
+                sub="Manage category-specific annual inflation rates"
             />
+            <div className="ins-inflation-actions">
+                <p className="ins-section-sub">
+                    Set annual inflation percentages per category. These rates drive the "Current Price" calculations in your Project Detail views.
+                </p>
+                <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
+                    <button
+                        className="btn-ghost"
+                        onClick={handleSuggest}
+                        disabled={suggesting}
+                    >
+                        {suggesting ? <Loader size={13} className="ins-spin" /> : <Sparkles size={13} />}
+                        {suggesting ? 'Fetching AI Suggestions...' : 'Suggest Rates with AI'}
+                    </button>
+                    {suggestions.length > 0 && (
+                        <button className="btn-primary" onClick={handleAcceptAll}>
+                            Accept All Suggestions
+                        </button>
+                    )}
+                </div>
+            </div>
 
-            {loading ? <Skeleton h={160} /> : (
-                <>
-                    <table className="rc-table ins-rates-table">
-                        <thead>
-                            <tr>
-                                <th>Category</th>
-                                <th>Type</th>
-                                {years.map(y => <th key={y} style={{ textAlign: 'center' }}>{y}</th>)}
-                                <th></th>
+            {suggestError && <div className="ins-error" style={{ marginTop: 12 }}>{suggestError}</div>}
+
+            <div className="ins-inflation-table-wrap">
+                <table className="rc-table">
+                    <thead>
+                        <tr>
+                            <th>Category</th>
+                            {years.map(y => <th key={y} style={{ textAlign: 'center' }}>{y}</th>)}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {categories.map(cat => (
+                            <tr key={cat.id}>
+                                <td style={{ fontWeight: 500 }}>
+                                    {cat.name}
+                                    <div style={{ fontSize: 10, color: '#aaa89f', textTransform: 'uppercase' }}>{cat.type}</div>
+                                </td>
+                                {years.map(year => {
+                                    const rateObj = rates.find(r => r.category_id === cat.id && r.year === year)
+                                    const currentRate = rateObj?.rate ?? 0   // ← .rate (normalized alias)
+                                    const suggested = getSuggestedRate(cat.name, year)
+                                    const isSaving = saving === `${cat.id}-${year}`
+
+                                    return (
+                                        <td key={year} style={{ textAlign: 'center', position: 'relative' }}>
+                                            <div className="ins-rate-input-wrapper">
+                                                <input
+                                                    type="number"
+                                                    className={`ins-rate-input ${suggested !== null ? 'has-suggestion' : ''}`}
+                                                    value={currentRate}              // ← controlled input
+                                                    step="0.1"
+                                                    onChange={async (e) => {
+                                                        const val = parseFloat(e.target.value)
+                                                        if (isNaN(val)) return
+                                                        setSaving(`${cat.id}-${year}`)
+                                                        await upsertRate(cat.id, year, val)
+                                                        setSaving(null)
+                                                    }}
+                                                />
+                                                <span className="ins-percent-symbol">%</span>
+                                                {isSaving && <Loader size={10} className="ins-spin ins-rate-loader" />}
+                                            </div>
+
+                                            {suggested !== null && suggested !== currentRate && (
+                                                <button
+                                                    className="ins-suggestion-badge"
+                                                    onClick={() => upsertRate(cat.id, year, suggested)}
+                                                    title={`AI suggests ${suggested}% based on market trends`}
+                                                >
+                                                    AI: {suggested}%
+                                                </button>
+                                            )}
+                                        </td>
+                                    )
+                                })}
                             </tr>
-                        </thead>
-                        <tbody>
-                            {categories.map(cat => (
-                                <tr key={cat.id}>
-                                    <td style={{ fontWeight: 500 }}>{cat.name}</td>
-                                    <td>
-                                        <span className={`badge ${cat.type === 'CAPEX' ? 'badge-blue' : 'badge-purple'}`}>
-                                            {cat.type}
-                                        </span>
-                                    </td>
-                                    {years.map(year => {
-                                        const existing = rates.find(r => r.category_id === cat.id && r.year === year)
-                                        const preset = getPresetRate(cat.name)
-                                        const isSaving = saving === `${cat.id}-${year}`
-                                        return (
-                                            <td key={year} style={{ textAlign: 'center' }}>
-                                                <div className="ins-rate-cell">
-                                                    <input
-                                                        className="ins-rate-input"
-                                                        type="number" min="0" max="100" step="0.1"
-                                                        defaultValue={existing?.rate_percent ?? ''}
-                                                        placeholder={preset.toFixed(1)}
-                                                        onBlur={e => handleUpsert(cat.id, year, e.target.value)}
-                                                    />
-                                                    <span className="ins-rate-pct">%</span>
-                                                    {isSaving && <Loader size={10} className="ins-spin" />}
-                                                </div>
-                                            </td>
-                                        )
-                                    })}
-                                    <td>
-                                        {rates.filter(r => r.category_id === cat.id).length > 0 && (
-                                            <button
-                                                className="rc-btn rc-btn-danger"
-                                                onClick={() => {
-                                                    rates.filter(r => r.category_id === cat.id).forEach(r => deleteRate(r.id))
-                                                }}
-                                                title="Clear all rates for this category"
-                                            >
-                                                <Trash2 size={12} />
-                                            </button>
-                                        )}
-                                    </td>
-                                </tr>
-                            ))}
-
-                            {categories.length === 0 && (
-                                <tr>
-                                    <td colSpan={years.length + 3} style={{ color: '#aaa89f', fontSize: 13, textAlign: 'center', padding: 20 }}>
-                                        No categories yet. Add categories first from the Resource Catalog.
-                                    </td>
-                                </tr>
-                            )}
-                        </tbody>
-                    </table>
-
-                    <div className="ins-rates-hint">
-                        <span>💡 Placeholder values shown in gray are PSA CPI preset suggestions — click a cell and type to override.</span>
-                    </div>
-                </>
-            )}
+                        ))}
+                    </tbody>
+                </table>
+            </div>
         </div>
     )
 }
