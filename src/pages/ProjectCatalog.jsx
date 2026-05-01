@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
     Plus, Search, X, SlidersHorizontal, Pencil, Trash2,
@@ -55,9 +55,52 @@ export default function ProjectCatalog() {
     const [deleteLoading, setDeleteLoading] = useState(false)
     const [toast, setToast] = useState(null)
 
+    // line items keyed by project_id — loaded once when inflation is first toggled on
+    const [lineItemsMap, setLineItemsMap] = useState({})
+    const [lineItemsLoading, setLineItemsLoading] = useState(false)
+
     const filters = useMemo(() => ({ search, status: filterStatus }), [search, filterStatus])
     const { projects, loading, error, createProject, updateProject, deleteProject } = useProjects(filters)
     const inflationRates = useInflationRatesReadonly()
+
+    // Fetch ALL project line items (with categories) when inflation is toggled on.
+    // We do this in one query rather than N queries to avoid waterfalls.
+    useEffect(() => {
+        if (!inflationOn) return
+        if (Object.keys(lineItemsMap).length > 0) return // already loaded
+
+        async function fetchAllLineItems() {
+            setLineItemsLoading(true)
+            const { supabase } = await import('../lib/supabaseClient')
+            const { data, error } = await supabase
+                .from('project_resources')
+                .select(`
+                    id,
+                    project_id,
+                    quantity,
+                    unit_cost_snapshot,
+                    capex_opex,
+                    working_days,
+                    resources (
+                        id, name, unit, resource_type,
+                        categories ( id, name, type )
+                    )
+                `)
+
+            if (!error && data) {
+                // Group by project_id
+                const map = {}
+                for (const item of data) {
+                    if (!map[item.project_id]) map[item.project_id] = []
+                    map[item.project_id].push(item)
+                }
+                setLineItemsMap(map)
+            }
+            setLineItemsLoading(false)
+        }
+
+        fetchAllLineItems()
+    }, [inflationOn])
 
     function showToast(msg, type = 'success') {
         setToast({ msg, type })
@@ -93,6 +136,8 @@ export default function ProjectCatalog() {
             await createProject(payload, lineItems)
             showToast('Project created.')
         }
+        // Invalidate the line items cache so next inflation toggle re-fetches
+        setLineItemsMap({})
     }
 
     async function handleDelete() {
@@ -101,22 +146,35 @@ export default function ProjectCatalog() {
         try {
             await deleteProject(deleteTarget.id)
             showToast('Project deleted.', 'danger')
+            setLineItemsMap({})
         } catch (e) { showToast(e.message, 'danger') }
         setDeleteLoading(false)
         setDeleteTarget(null)
     }
 
-    // ✅ Read total_cost directly from the DB record.
-    // useProjects.js now writes the correct unit-aware total on every
-    // create / update, and useProjectDetail syncs it on every detail view.
+    /**
+     * Get the display cost for a project card.
+     *
+     * When inflation is OFF  → raw total_cost from DB.
+     * When inflation is ON   → adjustedProjectCost WITH line items, so the
+     *                          math is identical to ProjectDetail's per-line,
+     *                          per-category compounding.
+     */
     function getDisplayCost(project) {
         const total = project.total_cost ?? 0
+
         if (!inflationOn) return formatCost(total, project.currency)
+
         const fromYear = project.start_date
             ? new Date(project.start_date).getFullYear()
             : new Date(project.created_at).getFullYear()
+
         if (inflationYear <= fromYear) return formatCost(total, project.currency)
-        const adjusted = adjustedProjectCost(project, inflationRates, inflationYear)
+
+        // Pass the per-project line items so adjustedProjectCost uses the same
+        // per-category compounding as ProjectDetail.
+        const items = lineItemsMap[project.id] ?? null
+        const adjusted = adjustedProjectCost(project, inflationRates, inflationYear, items)
         return formatCost(adjusted, project.currency)
     }
 
@@ -205,7 +263,7 @@ export default function ProjectCatalog() {
 
             {error && <div className="rc-error"><AlertTriangle size={15} /> {error}</div>}
 
-            {loading && (
+            {(loading || (inflationOn && lineItemsLoading)) && (
                 <div className="pj-grid">
                     {Array.from({ length: 6 }).map((_, i) => (
                         <div key={i} className="rc-skeleton" style={{ height: 180 }} />
@@ -213,7 +271,7 @@ export default function ProjectCatalog() {
                 </div>
             )}
 
-            {!loading && !error && projects.length === 0 && (
+            {!loading && !lineItemsLoading && !error && projects.length === 0 && (
                 <div className="rc-empty">
                     <div className="rc-empty-icon">🏗️</div>
                     <p>{search || activeFilters ? 'No projects found' : 'No projects yet'}</p>
@@ -226,7 +284,7 @@ export default function ProjectCatalog() {
                 </div>
             )}
 
-            {!loading && projects.length > 0 && (
+            {!loading && !lineItemsLoading && projects.length > 0 && (
                 <div className="pj-grid">
                     {projects.map((p, i) => (
                         <div
