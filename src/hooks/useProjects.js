@@ -36,15 +36,16 @@ export function useProjects(filters = {}) {
         setError(null)
         let query = supabase
             .from('projects')
-            .select('*')
+            .select('*, sites(id, name, code)')
             .order('created_at', { ascending: false })
         if (filters.status) query = query.eq('status', filters.status)
+        if (filters.site_id) query = query.eq('site_id', filters.site_id)
         if (filters.search) query = query.ilike('name', `%${filters.search}%`)
         const { data, error } = await query
         if (error) setError(error.message)
         else setProjects(data || [])
         setLoading(false)
-    }, [filters.status, filters.search])
+    }, [filters.status, filters.site_id, filters.search])
 
     useEffect(() => { fetchProjects() }, [fetchProjects])
 
@@ -149,7 +150,7 @@ export function useProjectDetail(projectId) {
         Promise.all([
             supabase
                 .from('projects')
-                .select('*')
+                .select('*, sites(id, name, code, address)')
                 .eq('id', projectId)
                 .single(),
             supabase

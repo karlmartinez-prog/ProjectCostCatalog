@@ -4,7 +4,7 @@ import {
     ArrowLeft, Pencil, Trash2, Calendar, DollarSign,
     Package, TrendingUp, AlertTriangle, Clock, CheckCircle2,
     XCircle, CircleDot, X, HardHat, Building2, ExternalLink,
-    Download, FileText, Sheet, ChevronDown, Loader, LayoutList
+    Download, FileText, Sheet, ChevronDown, Loader, LayoutList, MapPin
 } from 'lucide-react'
 import { useProjectDetail } from '../hooks/useProjects'
 import { useProjects } from '../hooks/useProjects'
@@ -564,6 +564,28 @@ export default function ProjectDetail() {
                             <div className="pjd-info-rows">
                                 <div className="pjd-info-row"><span className="pjd-info-label">Status</span><span className={`badge ${statusCfg.badge}`}>{project.status}</span></div>
                                 <div className="pjd-info-row"><span className="pjd-info-label">Currency</span><span className="pjd-info-value">{project.currency}</span></div>
+                                {(project.sites || project.location) && (
+                                    <div className="pjd-info-row" style={{ alignItems: 'flex-start' }}>
+                                        <span className="pjd-info-label" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                            <MapPin size={11} strokeWidth={1.5} style={{ color: '#c9a84c' }} /> Site
+                                        </span>
+                                        <div style={{ textAlign: 'right' }}>
+                                            {project.sites && (
+                                                <div className="pjd-info-value">
+                                                    {project.sites.name}
+                                                    {project.sites.code && (
+                                                        <span style={{ fontSize: 10, fontWeight: 700, background: '#f0ede8', color: '#7a7872', padding: '1px 5px', borderRadius: 4, marginLeft: 5 }}>
+                                                            {project.sites.code}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            )}
+                                            {project.location && (
+                                                <div style={{ fontSize: 11.5, color: '#aaa89f', marginTop: 2 }}>{project.location}</div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
                                 <div className="pjd-info-row"><span className="pjd-info-label">Resources</span><span className="pjd-info-value">{lineItems.length} items</span></div>
                                 <div className="pjd-info-row"><span className="pjd-info-label">Created</span><span className="pjd-info-value">{formatDate(project.created_at)}</span></div>
                                 {project.updated_at && <div className="pjd-info-row"><span className="pjd-info-label">Last updated</span><span className="pjd-info-value">{formatDate(project.updated_at)}</span></div>}

@@ -2,10 +2,11 @@ import { useState, useMemo, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
     Plus, Search, X, SlidersHorizontal, Pencil, Trash2,
-    AlertTriangle, TrendingUp, Calculator
+    AlertTriangle, TrendingUp, Calculator, MapPin
 } from 'lucide-react'
 import { useProjects } from '../hooks/useProjects'
 import { useInflationRatesReadonly } from '../hooks/useResources'
+import { useSitesReadonly } from '../hooks/useSites'
 import { adjustedProjectCost } from '../services/inflationEngine'
 import ProjectModal from '../components/projects/ProjectModal'
 import EstimatorModal from '../components/projects/EstimatorModal'
@@ -44,6 +45,7 @@ export default function ProjectCatalog() {
 
     const [search, setSearch] = useState('')
     const [filterStatus, setFilterStatus] = useState('')
+    const [filterSite, setFilterSite] = useState('')
     const [showFilters, setShowFilters] = useState(false)
     const [inflationOn, setInflationOn] = useState(false)
     const [inflationYear, setInflationYear] = useState(new Date().getFullYear())
@@ -59,9 +61,10 @@ export default function ProjectCatalog() {
     const [lineItemsMap, setLineItemsMap] = useState({})
     const [lineItemsLoading, setLineItemsLoading] = useState(false)
 
-    const filters = useMemo(() => ({ search, status: filterStatus }), [search, filterStatus])
+    const filters = useMemo(() => ({ search, status: filterStatus, site_id: filterSite }), [search, filterStatus, filterSite])
     const { projects, loading, error, createProject, updateProject, deleteProject } = useProjects(filters)
     const inflationRates = useInflationRatesReadonly()
+    const { sites } = useSitesReadonly()
 
     // Fetch ALL project line items (with categories) when inflation is toggled on.
     // We do this in one query rather than N queries to avoid waterfalls.
@@ -178,7 +181,7 @@ export default function ProjectCatalog() {
         return formatCost(adjusted, project.currency)
     }
 
-    const activeFilters = [filterStatus].filter(Boolean).length
+    const activeFilters = [filterStatus, filterSite].filter(Boolean).length
     const currentYear = new Date().getFullYear()
 
     return (
@@ -255,8 +258,19 @@ export default function ProjectCatalog() {
                             ))}
                         </select>
                     </div>
+                    <div className="mf-group">
+                        <label>Site</label>
+                        <select value={filterSite} onChange={e => setFilterSite(e.target.value)}>
+                            <option value="">All sites</option>
+                            {sites.map(s => (
+                                <option key={s.id} value={s.id}>
+                                    {s.name}{s.code ? ` (${s.code})` : ''}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
                     {activeFilters > 0 && (
-                        <button className="btn-ghost" onClick={() => setFilterStatus('')}>Clear all</button>
+                        <button className="btn-ghost" onClick={() => { setFilterStatus(''); setFilterSite('') }}>Clear all</button>
                     )}
                 </div>
             )}
@@ -313,6 +327,19 @@ export default function ProjectCatalog() {
 
                             {p.description && (
                                 <p className="pj-card-desc">{p.description}</p>
+                            )}
+
+                            {/* Site / Location — show whichever is set */}
+                            {(p.sites || p.location) && (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#7a7872', margin: '2px 0 4px' }}>
+                                    <MapPin size={11} strokeWidth={1.5} style={{ color: '#c9a84c', flexShrink: 0 }} />
+                                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                        {p.sites
+                                            ? `${p.sites.name}${p.sites.code ? ` (${p.sites.code})` : ''}${p.location ? `  ·  ${p.location}` : ''}`
+                                            : p.location
+                                        }
+                                    </span>
+                                </div>
                             )}
 
                             <div className="pj-card-cost">
