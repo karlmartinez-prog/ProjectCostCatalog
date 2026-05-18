@@ -156,29 +156,38 @@ export default function ProjectCatalog() {
     }
 
     /**
-     * Get the display cost for a project card.
-     *
-     * When inflation is OFF  → raw total_cost from DB.
-     * When inflation is ON   → adjustedProjectCost WITH line items, so the
-     *                          math is identical to ProjectDetail's per-line,
-     *                          per-category compounding.
+     * Get the raw numeric display cost (for budget bar math).
      */
-    function getDisplayCost(project) {
+    function getDisplayCostRaw(project) {
         const total = project.total_cost ?? 0
-
-        if (!inflationOn) return formatCost(total, project.currency)
-
+        if (!inflationOn) return total
         const fromYear = project.start_date
             ? new Date(project.start_date).getFullYear()
             : new Date(project.created_at).getFullYear()
-
-        if (inflationYear <= fromYear) return formatCost(total, project.currency)
-
-        // Pass the per-project line items so adjustedProjectCost uses the same
-        // per-category compounding as ProjectDetail.
+        if (inflationYear <= fromYear) return total
         const items = lineItemsMap[project.id] ?? null
-        const adjusted = adjustedProjectCost(project, inflationRates, inflationYear, items)
-        return formatCost(adjusted, project.currency)
+        return adjustedProjectCost(project, inflationRates, inflationYear, items)
+    }
+
+    function getDisplayCost(project) {
+        return formatCost(getDisplayCostRaw(project), project.currency)
+    }
+
+    /**
+     * Budget utilization: 0–100+ (percent of budget used).
+     * Returns null if no budget set.
+     */
+    function getBudgetUtil(project) {
+        const budget = project.allocated_budget
+        if (!budget || budget <= 0) return null
+        const cost = getDisplayCostRaw(project)
+        return (cost / budget) * 100
+    }
+
+    function budgetBarColor(pct) {
+        if (pct > 100) return '#dc2626'  // over budget — red
+        if (pct >= 85) return '#f08c00'  // near limit  — amber
+        return '#16a34a'                  // healthy     — green
     }
 
     const activeFilters = [filterStatus, filterSite].filter(Boolean).length
@@ -348,6 +357,38 @@ export default function ProjectCatalog() {
                                     <span className="pj-inflation-label">est. {inflationYear}</span>
                                 )}
                             </div>
+
+                            {/* Budget bar — shown when allocated_budget is set */}
+                            {(() => {
+                                const util = getBudgetUtil(p)
+                                if (util === null) return null
+                                const clampedPct = Math.min(util, 100)
+                                const color = budgetBarColor(util)
+                                const isOver = util > 100
+                                return (
+                                    <div style={{ marginTop: 6, marginBottom: 2 }}>
+                                        {/* Bar track */}
+                                        <div style={{ height: 5, background: '#f0ede8', borderRadius: 99, overflow: 'hidden' }}>
+                                            <div style={{
+                                                height: '100%', borderRadius: 99,
+                                                width: `${clampedPct}%`,
+                                                background: color,
+                                                transition: 'width 0.3s ease',
+                                            }} />
+                                        </div>
+                                        {/* Bar label */}
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 3, fontSize: 10.5, color: '#aaa89f' }}>
+                                            <span>
+                                                {formatCost(getDisplayCostRaw(p), p.currency)} of {formatCost(p.allocated_budget, p.currency)}
+                                                {inflationOn && <span style={{ color: '#c9a84c', marginLeft: 4 }}>({inflationYear})</span>}
+                                            </span>
+                                            <span style={{ fontWeight: 600, color }}>
+                                                {isOver ? '▲ ' : ''}{util.toFixed(1)}%
+                                            </span>
+                                        </div>
+                                    </div>
+                                )
+                            })()}
 
                             {(p.start_date || p.end_date) && (
                                 <div className="pj-card-dates">

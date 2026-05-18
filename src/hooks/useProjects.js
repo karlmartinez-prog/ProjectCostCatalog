@@ -31,6 +31,9 @@ export function useProjects(filters = {}) {
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState(null)
 
+    // Destructure here so useCallback dependency array sees primitives, not an object ref
+    const { status, site_id, search } = filters
+
     const fetchProjects = useCallback(async () => {
         setLoading(true)
         setError(null)
@@ -38,14 +41,14 @@ export function useProjects(filters = {}) {
             .from('projects')
             .select('*, sites(id, name, code)')
             .order('created_at', { ascending: false })
-        if (filters.status) query = query.eq('status', filters.status)
-        if (filters.site_id) query = query.eq('site_id', filters.site_id)
-        if (filters.search) query = query.ilike('name', `%${filters.search}%`)
+        if (status) query = query.eq('status', status)
+        if (site_id) query = query.eq('site_id', site_id)
+        if (search) query = query.ilike('name', `%${search}%`)
         const { data, error } = await query
         if (error) setError(error.message)
         else setProjects(data || [])
         setLoading(false)
-    }, [filters.status, filters.site_id, filters.search])
+    }, [status, site_id, search])
 
     useEffect(() => { fetchProjects() }, [fetchProjects])
 

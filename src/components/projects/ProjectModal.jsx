@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { X, Plus, Trash2, Search, Package, Tag, HardHat, Calendar, MapPin } from 'lucide-react'
+import { X, Plus, Trash2, Search, Package, Tag, HardHat, Calendar, MapPin, Wallet, FileText } from 'lucide-react'
 import { supabase } from '../../lib/supabaseClient'
 import { useSitesReadonly } from '../../hooks/useSites'
 import { countWorkingDays, resolveOpexDuration } from '../../services/laborEngine'
@@ -12,6 +12,7 @@ const EMPTY_PROJECT = {
     currency: 'PHP', start_date: '', end_date: '',
     working_days_mode: 'working_days',
     site_id: '', location: '',
+    allocated_budget: '', budget_notes: '',
 }
 
 function formatCost(amount, currency = 'PHP') {
@@ -140,6 +141,8 @@ export default function ProjectModal({ open, onClose, onSave, project, initialLi
                 working_days_mode: project.working_days_mode || 'working_days',
                 site_id: project.site_id || '',
                 location: project.location || '',
+                allocated_budget: project.allocated_budget != null ? String(project.allocated_budget) : '',
+                budget_notes: project.budget_notes || '',
             })
             setItems(initialLineItems.map(li => ({
                 _id: li.id || Math.random().toString(36).slice(2),
@@ -293,6 +296,8 @@ export default function ProjectModal({ open, onClose, onSave, project, initialLi
                 working_days_mode: form.working_days_mode,
                 site_id: form.site_id || null,
                 location: form.location.trim() || null,
+                allocated_budget: form.allocated_budget ? parseFloat(form.allocated_budget) : null,
+                budget_notes: form.budget_notes?.trim() || null,
                 total_cost: total,
             }
 
@@ -400,6 +405,35 @@ export default function ProjectModal({ open, onClose, onSave, project, initialLi
                                     value={form.location}
                                     onChange={e => setField('location', e.target.value)}
                                     placeholder="e.g. Brgy. Triangulo, Naga City"
+                                />
+                            </div>
+                        </div>
+
+                        {/* ── Budget row ── */}
+                        <div className="pm-form-row">
+                            <div className="mf-group">
+                                <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                    <Wallet size={11} strokeWidth={1.5} style={{ color: '#16a34a' }} /> Allocated budget
+                                    <span style={{ fontWeight: 400, color: '#aaa89f', fontSize: 11 }}>(optional)</span>
+                                </label>
+                                <input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    value={form.allocated_budget}
+                                    onChange={e => setField('allocated_budget', e.target.value)}
+                                    placeholder="e.g. 1000000"
+                                />
+                            </div>
+                            <div className="mf-group">
+                                <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                    <FileText size={11} strokeWidth={1.5} style={{ color: '#aaa89f' }} /> Budget notes
+                                    <span style={{ fontWeight: 400, color: '#aaa89f', fontSize: 11 }}>(optional)</span>
+                                </label>
+                                <input
+                                    value={form.budget_notes}
+                                    onChange={e => setField('budget_notes', e.target.value)}
+                                    placeholder="e.g. Approved by J. Santos · PO #12345"
                                 />
                             </div>
                         </div>

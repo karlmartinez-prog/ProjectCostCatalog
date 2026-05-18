@@ -4,7 +4,7 @@ import {
     ArrowLeft, Pencil, Trash2, Calendar, DollarSign,
     Package, TrendingUp, AlertTriangle, Clock, CheckCircle2,
     XCircle, CircleDot, X, HardHat, Building2, ExternalLink,
-    Download, FileText, Sheet, ChevronDown, Loader, LayoutList, MapPin
+    Download, FileText, Sheet, ChevronDown, Loader, LayoutList, MapPin, Wallet, Paperclip
 } from 'lucide-react'
 import { useProjectDetail } from '../hooks/useProjects'
 import { useProjects } from '../hooks/useProjects'
@@ -14,6 +14,7 @@ import { exportToPDF, exportToCSV } from '../services/projectExport'
 import ProjectModal from '../components/projects/ProjectModal'
 import ProjectLaborTab from '../components/projects/ProjectLaborTab'
 import ProjectGanttTab from '../components/projects/ProjectGanttTab'
+import ProjectFilesTab from '../components/projects/ProjectFilesTab'
 import '../components/projects/projects.css'
 
 const STATUS_CONFIG = {
@@ -305,6 +306,14 @@ export default function ProjectDetail() {
     const grandTotal = displayItems.reduce((s, i) => s + i.display_total, 0)
     const hasAnySupplier = displayItems.some(i => i.resources?.suppliers)
 
+    // ── Budget calculations ───────────────────────────
+    const budget = project.allocated_budget ?? null
+    const variance = budget != null ? budget - grandTotal : null   // positive = under, negative = over
+    const variancePct = budget != null && budget > 0 ? (variance / budget) * 100 : null
+    const utilPct = budget != null && budget > 0 ? (grandTotal / budget) * 100 : null
+    const budgetStatus = utilPct == null ? null : utilPct > 100 ? 'over' : utilPct >= 85 ? 'near' : 'under'
+    const budgetColor = budgetStatus === 'over' ? '#dc2626' : budgetStatus === 'near' ? '#f08c00' : '#16a34a'
+
     const exportPayload = {
         project, displayItems, inflationOn,
         projectBaseYear, currentYear,
@@ -412,6 +421,28 @@ export default function ProjectDetail() {
                     <div className="pjd-stat-divider" />
                     <div className="pjd-stat"><TrendingUp size={16} strokeWidth={1.5} style={{ transform: 'scaleX(-1)' }} /><div><div className="pjd-stat-value">{formatCost(opexTotal, project.currency)}</div><div className="pjd-stat-label">OPEX</div></div></div>
                 </>}
+                {budget != null && <>
+                    <div className="pjd-stat-divider" />
+                    <div className="pjd-stat">
+                        <Wallet size={16} strokeWidth={1.5} style={{ color: '#16a34a' }} />
+                        <div>
+                            <div className="pjd-stat-value">{formatCost(budget, project.currency)}</div>
+                            <div className="pjd-stat-label">Budget</div>
+                        </div>
+                    </div>
+                    <div className="pjd-stat-divider" />
+                    <div className="pjd-stat">
+                        <TrendingUp size={16} strokeWidth={1.5} style={{ color: budgetColor }} />
+                        <div>
+                            <div className="pjd-stat-value" style={{ color: budgetColor }}>
+                                {variance >= 0 ? '+' : ''}{formatCost(variance, project.currency)}
+                            </div>
+                            <div className="pjd-stat-label">
+                                {budgetStatus === 'over' ? 'Over budget' : budgetStatus === 'near' ? 'Near limit' : 'Under budget'}
+                            </div>
+                        </div>
+                    </div>
+                </>}
             </div>
 
             {/* ── Tabs ── */}
@@ -425,6 +456,9 @@ export default function ProjectDetail() {
                 <button className={`pjd-tab ${activeTab === 'gantt' ? 'active' : ''}`} onClick={() => setActiveTab('gantt')}>
                     <LayoutList size={14} strokeWidth={1.5} /> Gantt
                 </button>
+                <button className={`pjd-tab ${activeTab === 'files' ? 'active' : ''}`} onClick={() => setActiveTab('files')}>
+                    <Paperclip size={14} strokeWidth={1.5} /> Files
+                </button>
             </div>
 
             {activeTab === 'labor' && <ProjectLaborTab project={project} />}
@@ -432,6 +466,12 @@ export default function ProjectDetail() {
             {activeTab === 'gantt' && (
                 <div className="card pjd-section" style={{ marginTop: 0 }}>
                     <ProjectGanttTab project={project} />
+                </div>
+            )}
+
+            {activeTab === 'files' && (
+                <div className="card pjd-section" style={{ marginTop: 0 }}>
+                    <ProjectFilesTab project={project} />
                 </div>
             )}
 
@@ -591,6 +631,79 @@ export default function ProjectDetail() {
                                 {project.updated_at && <div className="pjd-info-row"><span className="pjd-info-label">Last updated</span><span className="pjd-info-value">{formatDate(project.updated_at)}</span></div>}
                             </div>
                         </div>
+
+                        {/* ── Budget card ── */}
+                        {budget != null && (
+                            <div className="card pjd-section">
+                                <div className="pjd-section-title">
+                                    <Wallet size={15} strokeWidth={1.5} style={{ color: '#16a34a' }} /> Budget
+                                </div>
+                                <div className="pjd-info-rows">
+                                    <div className="pjd-info-row">
+                                        <span className="pjd-info-label">Allocated</span>
+                                        <span className="pjd-info-value">{formatCost(budget, project.currency)}</span>
+                                    </div>
+                                    <div className="pjd-info-row">
+                                        <span className="pjd-info-label">Actual cost</span>
+                                        <span className="pjd-info-value">{formatCost(grandTotal, project.currency)}</span>
+                                    </div>
+                                    <div className="pjd-info-row">
+                                        <span className="pjd-info-label">Variance</span>
+                                        <span style={{ fontWeight: 600, fontSize: 13, color: budgetColor }}>
+                                            {variance >= 0 ? '+' : ''}{formatCost(variance, project.currency)}
+                                            {variancePct != null && (
+                                                <span style={{ fontWeight: 400, fontSize: 11, marginLeft: 5 }}>
+                                                    ({Math.abs(variancePct).toFixed(1)}% {variance >= 0 ? 'under' : 'over'})
+                                                </span>
+                                            )}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                {/* Utilization bar */}
+                                {utilPct != null && (
+                                    <div style={{ marginTop: 12 }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#aaa89f', marginBottom: 5 }}>
+                                            <span>Budget utilization</span>
+                                            <span style={{ fontWeight: 600, color: budgetColor }}>{utilPct.toFixed(1)}%</span>
+                                        </div>
+                                        <div style={{ height: 7, background: '#f0ede8', borderRadius: 99, overflow: 'hidden' }}>
+                                            <div style={{
+                                                height: '100%', borderRadius: 99,
+                                                width: `${Math.min(utilPct, 100)}%`,
+                                                background: budgetColor,
+                                                transition: 'width 0.4s ease',
+                                            }} />
+                                        </div>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10.5, color: '#ccc9c2', marginTop: 4 }}>
+                                            <span>₱0</span>
+                                            <span>{formatCost(budget, project.currency)}</span>
+                                        </div>
+                                        {utilPct > 100 && (
+                                            <div style={{
+                                                marginTop: 8, padding: '6px 10px',
+                                                background: '#dc262610', border: '1px solid #dc262630',
+                                                borderRadius: 6, fontSize: 11.5, color: '#dc2626',
+                                                display: 'flex', alignItems: 'center', gap: 5,
+                                            }}>
+                                                ▲ Over budget by {formatCost(Math.abs(variance), project.currency)}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {project.budget_notes && (
+                                    <div style={{
+                                        marginTop: 10, padding: '7px 10px',
+                                        background: '#faf8f5', borderRadius: 6,
+                                        fontSize: 11.5, color: '#7a7872',
+                                        borderLeft: '2px solid #c9a84c',
+                                    }}>
+                                        {project.budget_notes}
+                                    </div>
+                                )}
+                            </div>
+                        )}
 
                         {hasAnySupplier && (
                             <div className="card pjd-section">
